@@ -22,7 +22,6 @@ Thành viên:
 4. [Công nghệ sử dụng](#4-công-nghệ-sử-dụng)
 5. [Cấu trúc thư mục](#5-cấu-trúc-thư-mục)
 6. [Phân công công việc](#6-phân-công-công-việc)
-7. [Hướng dẫn chạy nhanh](#7-hướng-dẫn-chạy-nhanh)
 
 ---
 
