@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  hdfs-site.xml — HDFS configuration
+  PATCH 8: Added ip-hostname-check=false for Docker networking
+-->
+<configuration>
+
+  <!-- Replication factor = 2 (khớp số DataNode) -->
+  <property>
+    <name>dfs.replication</name>
+    <value>2</value>
+    <description>Number of replicas. Set to 1 if only 1 DataNode is running.</description>
+  </property>
+
+  <!-- NameNode metadata storage -->
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>/hadoop/dfs/name</value>
+  </property>
+
+  <!-- DataNode data storage -->
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>/hadoop/dfs/data</value>
+  </property>
+
+  <!-- Block size: 128 MB -->
+  <property>
+    <name>dfs.blocksize</name>
+    <value>134217728</value>
+    <description>128 MB block size — suitable for large CSVs and Parquet files.</description>
+  </property>
+
+  <!-- NameNode HTTP address for Web UI -->
+  <property>
+    <name>dfs.namenode.http-address</name>
+    <value>namenode:9870</value>
+  </property>
+
+  <!-- NameNode RPC address -->
+  <property>
+    <name>dfs.namenode.rpc-address</name>
+    <value>namenode:9000</value>
+  </property>
+
+  <!--
+    PATCH 8 — CRITICAL FOR DOCKER:
+    Disable IP/hostname mismatch check.
+    Docker assigns IPs dynamically; without this DataNodes fail to register.
+  -->
+  <property>
+    <name>dfs.namenode.datanode.registration.ip-hostname-check</name>
+    <value>false</value>
+  </property>
+
+  <!-- Permissions off for dev environment -->
+  <property>
+    <name>dfs.permissions.enabled</name>
+    <value>false</value>
+  </property>
+
+  <!-- WebHDFS enabled (used by some Spark connectors) -->
+  <property>
+    <name>dfs.webhdfs.enabled</name>
+    <value>true</value>
+  </property>
+
+  <!-- DataNode hostnames can be IPs in Docker -->
+  <property>
+    <name>dfs.namenode.use.datanode.hostname</name>
+    <value>false</value>
+  </property>
+
+</configuration>
