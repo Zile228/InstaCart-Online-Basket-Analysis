@@ -1,208 +1,130 @@
-# Instacart Online Grocery Basket Analysis
+# Docker Cluster — Hướng dẫn sử dụng
 
-> **Môn học:**  Dữ liệu lớn và ứng dụng
+## Stack
 
-> **Nhóm:** 05
-
-Thành viên:
-1. Thái Hoài An - 31231025020
-2. Nguyễn Thị Thùy Dương - 31231022904
-3. Nguyễn Duy Tân - 31231023384
-4. Lê Vy - 31231022128
-
-> **Dataset:** [Instacart Online Grocery Basket Analysis - Yasserh (Kaggle)](https://www.kaggle.com/datasets/yasserh/instacart-online-grocery-basket-analysis-dataset)
-
----
-
-## Mục lục
-
-1. [Giới thiệu đề tài](#1-giới-thiệu-đề-tài)
-2. [Bộ dữ liệu](#2-bộ-dữ-liệu)
-3. [Kiến trúc hệ thống](#3-kiến-trúc-hệ-thống)
-4. [Công nghệ sử dụng](#4-công-nghệ-sử-dụng)
-5. [Cấu trúc thư mục](#5-cấu-trúc-thư-mục)
-6. [Phân công công việc](#6-phân-công-công-việc)
+| Service | Image | Port |
+|---------|-------|------|
+| NameNode | `instacart-hadoop:3.4.3` (custom) | 9870, 9000 |
+| DataNode ×2 | `instacart-hadoop:3.4.3` (custom) | — |
+| Spark Master | `instacart-spark:4.1.1` (custom) | 8080, 7077 |
+| Spark Worker ×2 | `instacart-spark:4.1.1` (custom) | 8081, 8082 |
+| Kafka | `apache/kafka:4.1.2` (KRaft, no Zookeeper) | 9092 |
+| Jupyter | custom (Python 3.11 + PySpark 4.1.1) | 8888 |
 
 ---
 
-## 1. Giới thiệu
+## Quick Start
 
-Đồ án thực hiện phân tích hành vi mua sắm nhu yếu phẩm của hơn 200.000 khách hàng trên nền tảng **Instacart**, bao gồm hơn **3.4 triệu đơn hàng** và **32.4 triệu chi tiết sản phẩm**. Mục tiêu triển khai của nhóm bao gồm:
+### Bước 1 — Build images (chỉ cần làm 1 lần, ~10-15 phút)
 
-- Xây dựng hạ tầng phân tán **Hadoop + Spark** trên cụm **multi-node** giả lập bằng Docker Compose.
-- Phân tích hành vi mua sắm bằng **Spark SQL**.
-- Học máy phân tán với **Spark MLlib**: phân cụm khách hàng (K-Means) và dự báo sản phẩm mua lại (Random Forest).
-- Mô phỏng luồng đơn hàng thời gian thực bằng **Kafka + Spark Structured Streaming**.
-- Demo kết quả trực tuyến qua **Vercel** (Next.js frontend) + **Railway** (FastAPI backend) + **Supabase** (PostgreSQL cloud).
+```bash
+cd docker/
 
----
+# Build Hadoop image 
+docker build -f hadoop/Dockerfile -t instacart-hadoop:3.4.3 hadoop/
 
-## 2. Bộ dữ liệu
+# Build Spark image 
+docker build -f spark/Dockerfile -t instacart-spark:4.1.1 spark/
 
-### Nguồn gốc
-
-| Thông tin | Chi tiết |
-|---|---|
-| Tên dataset | Instacart Online Grocery Basket Analysis |
-| Tác giả | Yasserh |
-| Nền tảng | Kaggle |
-| Link | https://www.kaggle.com/datasets/yasserh/instacart-online-grocery-basket-analysis-dataset |
-
-### Các bảng dữ liệu
-
-| File | Số dòng | Vai trò | Các cột chính |
-|---|---|---|---|
-| `orders.csv` | ~3,400,000 | Bảng sự kiện đơn hàng | `order_id`, `user_id`, `order_dow`, `order_hour_of_day`, `days_since_prior_order` |
-| `order_products__prior.csv` | ~32,400,000 | Fact table chi tiết sản phẩm | `order_id`, `product_id`, `add_to_cart_order`, `reordered` |
-| `products.csv` | 49,688 | Dimension - sản phẩm | `product_id`, `product_name`, `aisle_id`, `department_id` |
-| `aisles.csv` | 134 | Dimension - quầy hàng | `aisle_id`, `aisle` |
-| `departments.csv` | 21 | Dimension - ngành hàng | `department_id`, `department` |
-
-
----
-
-## 3. Kiến trúc hệ thống
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│              Docker Compose — Multi-node Cluster (Local)     │
-│                                                              │
-│  ┌──────────────┐    ┌───────────────┐    ┌──────────────┐  │
-│  │ Hadoop        │    │ Spark Cluster  │    │ Kafka + DB   │  │
-│  │ NameNode:9870 │    │ Master:8080    │    │ Broker:9092  │  │
-│  │ DataNode x2   │◄──►│ Worker x2      │    │ Postgres     │  │
-│  │ HDFS Storage  │    │ Jupyter:8888   │    │ FastAPI:8000 │  │
-│  └──────────────┘    └───────────────┘    └──────────────┘  │
-└────────────────────────────┬────────────────────────────────┘
-                             │ migrate results
-                ┌────────────▼────────────────────────────────┐
-                │                   Cloud (Free Tier)          │
-                │  Supabase (PostgreSQL) ◄─► Railway (FastAPI) │
-                │                              │               │
-                │                         Vercel (Next.js)     │
-                └─────────────────────────────────────────────┘
+# Build Jupyter image
+docker build -f jupyter/Dockerfile -t instacart-jupyter:latest jupyter/
 ```
 
+### Bước 2 — Khởi động cluster
 
-### Luồng dữ liệu chính
+```bash
+cd docker/
+docker-compose up -d
 
-1. Dataset CSV -> upload lên **HDFS** (partitioned).
-2. **Spark SQL** đọc từ HDFS -> phân tích -> ghi kết quả vào PostgreSQL local.
-3. **Spark MLlib** đọc từ HDFS -> train model -> lưu model + metrics vào PostgreSQL local.
-4. **Kafka Producer** đọc `orders_test` (mô phỏng stream) -> Kafka Topic -> **Spark Structured Streaming** consume -> predict realtime -> ghi vào PostgreSQL.
-5. **Sync script** đẩy kết quả từ PostgreSQL local lên **Supabase** (cloud).
-6. **FastAPI** (Railway) đọc Supabase -> **Vercel** frontend gọi API -> hiển thị dashboard.
-
----
-
-## 4. Công nghệ sử dụng
-
-| Tầng | Công nghệ | Phiên bản |
-|---|---|---|
-| Container | Docker + Docker Compose | ... |
-| Distributed Storage | Apache Hadoop HDFS | ... |
-| Distributed Computing | Apache Spark + PySpark | ... |
-| Message Broker | Apache Kafka + Zookeeper | ... |
-| Notebook | Jupyter Lab (PySpark kernel) | Latest |
-| Local Database | PostgreSQL | ... |
-| Cloud Database | Supabase (PostgreSQL) | Free tier |
-| Backend API | FastAPI + SQLAlchemy | Latest |
-| Frontend | Next.js (React) | ... |
-| Deploy Frontend | Vercel | Free tier |
-| Deploy Backend | Railway | Free tier |
-| Language | Python 3. ... | — |
-
----
-
-## 5. Cấu trúc thư mục
-
+# Đợi ~60-90 giây cho cluster ổn định
+docker-compose ps
 ```
-Nhom_05/
-├── README.md                        <- File này
-├── docker-compose.yml               <- Cấu hình toàn bộ cluster
-│
-├── infra/                           <- Cấu hình Hadoop & Spark (M1)
-│   ├── hadoop/
-│   │   ├── Dockerfile
-│   │   ├── core-site.xml
-│   │   ├── hdfs-site.xml
-│   │   ├── mapred-site.xml
-│   │   └── yarn-site.xml
-│   └── spark/
-│       ├── Dockerfile
-│       └── spark-defaults.conf
-│
-├── src/                             <- Toàn bộ source code
-│   ├── 01_data_engineering/         <- M1: Hạ tầng & tiền xử lý
-│   │   ├── upload_to_hdfs.sh        <- Script upload CSV lên HDFS
-│   │   ├── verify_hdfs.sh           <- Script kiểm tra HDFS
-│   │   └── 01_preprocessing.ipynb  <- EDA + làm sạch + partition
-│   │
-│   ├── 02_spark_sql/                <- M2: Phân tích SQL
-│   │   └── 02_spark_sql_queries.ipynb  <- Thực hiện truy vấn nâng cao
-│   │
-│   ├── 03_mllib/                    <- M3: Học máy
-│   │   ├── 03a_kmeans_clustering.ipynb     <- Phân cụm khách hàng
-│   │   └── 03b_reorder_prediction.ipynb    <- Dự báo mua lại
-│   │
-│   └── 04_streaming/               <- M4: Streaming
-│       ├── kafka_producer.py        <- Mô phỏng luồng đơn hàng
-│       ├── spark_streaming.ipynb    <- Spark Structured Streaming
-│       └── sync_to_supabase.py      <- Đẩy kết quả lên cloud
-│
-├── backend/                         <- M4: FastAPI (deploy Railway)
-│   ├── main.py
-│   ├── routers/
-│   │   ├── analytics.py             <- Endpoints SQL results
-│   │   ├── predictions.py           <- Endpoints ML predictions
-│   │   └── streaming.py             <- SSE endpoint realtime
-│   ├── models.py
-│   ├── database.py
-│   ├── requirements.txt
-│   └── Dockerfile
-│
-├── frontend/                        <- M4: Next.js (deploy Vercel)
-│   ├── app/
-│   │   ├── page.tsx                 <- Dashboard tổng quan
-│   │   ├── analytics/page.tsx       <- Kết quả SQL
-│   │   ├── ml/page.tsx              <- Kết quả ML
-│   │   └── streaming/page.tsx       <- Demo realtime
-│   ├── components/
-│   ├── package.json
-│   └── next.config.js
-│
-├── data/                            <- Không commit lên Git (gitignore)
-│   └── .gitkeep
-│
-└── docs/
-    ├── report/                      <- File Word báo cáo
-    └── slides/                      <- File PowerPoint
+
+Phải thấy tất cả containers ở trạng thái `running` (không có `Exit`).
+
+### Bước 3 — Kiểm tra UI
+
+| UI | URL | Phải thấy |
+|----|-----|-----------|
+| HDFS NameNode | http://localhost:9870 | Tab "Datanodes" → 2 live datanodes |
+| Spark Master | http://localhost:8080 | 2 workers registered |
+| YARN | http://localhost:8088 | ResourceManager running |
+| Jupyter | http://localhost:8888 | Notebook server (no token) |
+
+### Bước 4 — Upload data
+
+```bash
+# Copy CSV files vào namenode container (từ thư mục data/)
+docker cp data/orders.csv namenode:/tmp/
+docker cp data/order_products__prior.csv namenode:/tmp/
+docker cp data/order_products__train.csv namenode:/tmp/
+docker cp data/products.csv namenode:/tmp/
+docker cp data/aisles.csv namenode:/tmp/
+docker cp data/departments.csv namenode:/tmp/
+
+# Chạy script upload
+docker exec namenode bash /home/nhom05/work/01_preprocessing/01_upload_to_hdfs.sh
+
+# Hoặc dùng Windows .cmd script
+src\01_preprocessing\01_upload_to_hdfs_windows.cmd
+```
+
+### Bước 5 — Chạy Feature Engineering
+
+Mở http://localhost:8888 → `work/01_preprocessing/02_feature_engineering.py`
+
+Chạy từng cell (# %% markers) hoặc toàn bộ script.
+
+---
+
+## RAM Requirements
+
+| Cấu hình | Tổng RAM cần |
+|----------|-------------|
+| Full (2 worker × 2G) | ~10-12 GB |
+| Light (2 worker × 1G) | ~6-8 GB |
+| Minimal (1 worker × 1G) | ~5-6 GB |
+
+**Nếu máy ≤ 16GB RAM**, giảm trong `docker-compose.yml`:
+```yaml
+SPARK_WORKER_MEMORY: 1G
+```
+Và trong `spark-defaults.conf`:
+```
+spark.executor.memory   1g
 ```
 
 ---
 
-## 6. Phân công công việc
+## Lỗi thường gặp
 
-### Bảng phân công
+| Lỗi | Nguyên nhân | Cách sửa |
+|-----|------------|---------|
+| DataNode không kết nối được | `ip-hostname-check` | Đã fix trong `hdfs-site.xml` (PATCH 8) |
+| `ClassNotFoundException kafka` | Sai Scala version | Dùng `_2.13` không phải `_2.12` (PATCH 2) |
+| Spark Worker exit(1) | Hết RAM | Giảm `SPARK_WORKER_MEMORY=1G` |
+| Kafka fails to start | CLUSTER_ID conflict | `docker-compose down -v` rồi up lại |
+| Jupyter không load | Port 8888 bị chiếm | Đổi port sang `8889:8888` |
 
-| Thành viên | Vai trò | Phạm vi công việc | Branch |
-|---|---|---|---|
-| Lê Vy **(M1)** | Data Engineer | Docker Compose, Hadoop config, HDFS upload, EDA + Preprocessing pipeline | `/m1-infra` |
-| Nguyễn Duy Tân **(M2)** | Data Analyst | Spark SQL queries (Window Functions, Multi-join, Subquery) | `/m2-sql` |
-| Nguyễn Thị Thùy Dương **(M3)** | ML Engineer | K-Means clustering (Silhouette), RandomForest reorder prediction | `/m3-mllib` |
-| Thái Hoài An **(M4)** | Streaming + Web | Kafka producer, Spark Streaming, FastAPI, Vercel frontend, cloud deploy | `/m4-streaming` |
+## Dừng cluster
 
-### Chi tiết công việc từng thành viên
+```bash
+docker-compose down
 
-**Lê Vy - Data Engineer**
-- ...
+# Xóa volumes (reset hoàn toàn HDFS data):
+docker-compose down -v
+```
 
-**Nguyễn Duy Tân - Data Analyst**
-- ...
+---
 
-**Nguyễn Thị Thùy Dương - ML Engineer**
-- ...
+## Spark submit example
 
-**Thái Hoài An - Streaming + Web**
-- ...
-
+```bash
+# Từ bên trong spark-master container:
+docker exec spark-master spark-submit \
+  --master spark://spark-master:7077 \
+  --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1 \
+  --conf spark.hadoop.fs.defaultFS=hdfs://namenode:9000 \
+  --executor-memory 1g \
+  /opt/spark/work-dir/your_script.py
+```
