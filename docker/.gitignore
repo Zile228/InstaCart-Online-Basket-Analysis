@@ -1,0 +1,22 @@
+# ============================================================
+#  .gitignore cho thư mục docker/
+# ============================================================
+
+# File .env chứa IP thực — KHÔNG commit lên git
+.env
+
+# Docker volumes và data tạm
+hadoop_namenode/
+hadoop_datanode*/
+hadoop_tmp/
+hadoop_virtual*/
+
+# Log files
+*.log
+logs/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db

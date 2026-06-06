@@ -29,6 +29,7 @@ docker build -f spark/Dockerfile -t instacart-spark:4.1.1 spark/
 # Build Jupyter image
 docker build -f jupyter/Dockerfile -t instacart-jupyter:latest jupyter/
 ```
+NOTE: BỎ. DÙNG docker-compose build --no-cache
 
 ### Bước 2 — Khởi động cluster
 

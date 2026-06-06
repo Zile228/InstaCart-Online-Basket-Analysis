@@ -3,6 +3,10 @@
 #  PATCH 1 & 6: Spark 4.1.1 + Scala 2.13 + Java 17
 #  Base: eclipse-temurin:17-jdk-jammy (JDK 17 required for Spark 4.x)
 #  Roles: spark-master OR spark-worker (via SPARK_MODE env var)
+#
+#  BUG FIX (v2): Added netcat-openbsd — entrypoint.sh dùng
+#    nc -z để wait cho master, thay cho /dev/tcp (bash built-in
+#    không reliable trên mọi kernel config trong Docker)
 # ============================================================
 
 FROM eclipse-temurin:17-jdk-jammy
@@ -16,11 +20,13 @@ ENV PYSPARK_PYTHON=python3
 ENV PYSPARK_DRIVER_PYTHON=python3
 
 # ── System packages ──────────────────────────────────────────
+# BUG FIX: thêm netcat-openbsd (cần cho `nc -z` trong entrypoint)
 RUN apt-get update && apt-get install -y \
     wget \
     python3 \
     python3-pip \
     procps \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Python packages ──────────────────────────────────────────
@@ -36,7 +42,7 @@ RUN pip3 install --no-cache-dir \
 
 # ── Download and install Spark 4.1.1 ─────────────────────────
 #  Built for Hadoop 3, Scala 2.13 (PATCH 1)
-RUN wget -q \
+RUN wget --progress=bar:force:noscroll \
     https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz \
     && tar -xzf spark-${SPARK_VERSION}-bin-hadoop3.tgz -C /opt/ \
     && mv /opt/spark-${SPARK_VERSION}-bin-hadoop3 ${SPARK_HOME} \

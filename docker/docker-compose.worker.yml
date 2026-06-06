@@ -1,0 +1,114 @@
+# ============================================================
+#  docker-compose.worker.yml
+#  Chạy trên MACHINE 2 (Worker-1) hoặc MACHINE 3 (Worker-2)
+#  Stack: Hadoop DataNode + YARN NodeManager + Spark Worker
+#
+#  Khởi động:
+#    ./scripts/start-worker.sh
+#
+#  Yêu cầu trong .env:
+#    MASTER_TS_IP   — Tailscale IP của máy master
+#    WORKER_ID      — 1 cho worker-1, 2 cho worker-2
+#    WORKER_MEM     — RAM cấp cho mỗi container (vd: 4G)
+#    WORKER_CORES   — Số core cho Spark Worker (vd: 2)
+#    YARN_MEM_MB    — RAM cho YARN NodeManager tính bằng MB (vd: 3072)
+#
+#  Ghi chú quan trọng:
+#    extra_hosts:
+#      "namenode"    → MASTER_TS_IP  : DataNode gọi NameNode bằng hostname "namenode"
+#      "spark-master"→ MASTER_TS_IP  : Spark Worker gọi Master bằng hostname "spark-master"
+#    Nhờ extra_hosts, các hostname trong config XML vẫn dùng được
+#    mà không cần thay đổi file Hadoop/Spark.
+# ============================================================
+
+networks:
+  bigdata-net:
+    driver: bridge   # Network cục bộ trên máy worker (không kết nối với master bridge)
+
+# ─────────────────────────────────────────────────────────────
+#  HADOOP DATANODE + YARN NodeManager
+#
+#  extra_hosts "namenode → MASTER_TS_IP":
+#    core-site.xml và hdfs-site.xml dùng hostname "namenode"
+#    DataNode cần resolve "namenode" → Tailscale IP của master
+#    Không có dòng này DataNode không đăng ký được với NameNode
+#
+#  SERVICE_PRECONDITION: chờ NameNode Web UI (9870) trên master
+#    qua Tailscale trước khi start để tránh crash loop
+# ─────────────────────────────────────────────────────────────
+services:
+  datanode:
+    image: instacart-hadoop:3.4.3
+    container_name: datanode-${WORKER_ID:-1}
+    hostname: datanode${WORKER_ID:-1}
+    ports:
+      - "9864:9864"   # DataNode Web UI  → http://WORKER_HOST:9864
+      - "9866:9866"   # DataNode Data transfer (HDFS read/write)
+      - "8042:8042"   # NodeManager Web UI → http://WORKER_HOST:8042
+    extra_hosts:
+      # QUAN TRỌNG: resolve "namenode" → Tailscale IP của master machine
+      # DataNode + NodeManager gọi namenode:9000, namenode:8032, namenode:8088
+      - "namenode:${MASTER_TS_IP}"
+    environment:
+      HADOOP_ROLE: datanode
+      # Entrypoint sẽ chờ port này sẵn sàng trước khi start
+      SERVICE_PRECONDITION: "${MASTER_TS_IP}:9870"
+      # Ghi đè cấu hình memory YARN theo .env (tuỳ RAM máy worker)
+      YARN_NODEMANAGER_RESOURCE_MEMORY_MB: "${YARN_MEM_MB:-3072}"
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+      - ./hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+      - ./hadoop/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml:ro
+      - ./hadoop/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml:ro
+    mem_limit: ${WORKER_MEM:-4G}
+    memswap_limit: ${WORKER_MEM:-4G}
+    networks:
+      - bigdata-net
+
+# ─────────────────────────────────────────────────────────────
+#  SPARK WORKER
+#
+#  extra_hosts "spark-master → MASTER_TS_IP":
+#    Khi Spark Worker đăng ký với Master, nó gửi hostname của mình
+#    và nhận lại địa chỉ driver. Driver liên lạc lại qua hostname
+#    "spark-master" — cần resolve được từ worker machine.
+#
+#  Port Web UI:
+#    WORKER_ID=1 → host port 8081
+#    WORKER_ID=2 → host port 8082
+#    (tránh xung đột nếu sau này nhiều worker trên cùng máy)
+# ─────────────────────────────────────────────────────────────
+  spark-worker:
+    image: instacart-spark:4.1.1
+    container_name: spark-worker-${WORKER_ID:-1}
+    hostname: spark-worker-${WORKER_ID:-1}
+    ports:
+      - "808${WORKER_ID:-1}:8081"   # Web UI: worker-1 → 8081, worker-2 → 8082
+    extra_hosts:
+      # QUAN TRỌNG: resolve "spark-master" → Tailscale IP của master machine
+      # Spark Worker gọi spark-master:7077 để đăng ký
+      - "spark-master:${MASTER_TS_IP}"
+      # Resolve "namenode" để Spark executor đọc/ghi HDFS trực tiếp
+      - "namenode:${MASTER_TS_IP}"
+    environment:
+      SPARK_MODE: worker
+      # Kết nối Spark Master qua Tailscale IP (fallback hostname cũng được nhờ extra_hosts)
+      SPARK_MASTER_URL: spark://${MASTER_TS_IP}:7077
+      SPARK_WORKER_MEMORY: ${WORKER_MEM:-4G}
+      SPARK_WORKER_CORES: "${WORKER_CORES:-2}"
+      SPARK_WORKER_WEBUI_PORT: 8081
+    volumes:
+      - ./spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    mem_limit: ${WORKER_MEM:-4G}
+    memswap_limit: ${WORKER_MEM:-4G}
+    depends_on:
+      - datanode
+    networks:
+      - bigdata-net
+
+# ─────────────────────────────────────────────────────────────
+#  VOLUMES — persistent HDFS DataNode storage
+# ─────────────────────────────────────────────────────────────
+volumes:
+  hadoop_datanode:

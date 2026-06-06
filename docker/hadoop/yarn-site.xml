@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <!--
-  yarn-site.xml — YARN ResourceManager configuration
+  yarn-site.xml — YARN ResourceManager + NodeManager configuration
+  Multi-machine:
+    - ResourceManager chạy trên master (hostname "namenode")
+    - NodeManager chạy trên worker machines
+    - Worker resolve "namenode" → MASTER_TS_IP qua extra_hosts
 -->
 <configuration>
 
-  <!-- Enable MapReduce shuffle service on NodeManager -->
   <property>
     <name>yarn.nodemanager.aux-services</name>
     <value>mapreduce_shuffle</value>
@@ -16,49 +19,60 @@
     <value>org.apache.hadoop.mapred.ShuffleHandler</value>
   </property>
 
-  <!-- ResourceManager host = NameNode container -->
   <property>
     <name>yarn.resourcemanager.hostname</name>
     <value>namenode</value>
   </property>
 
-  <!-- ResourceManager address -->
   <property>
     <name>yarn.resourcemanager.address</name>
     <value>namenode:8032</value>
   </property>
 
-  <!-- ResourceManager Web UI -->
+  <property>
+    <name>yarn.resourcemanager.scheduler.address</name>
+    <value>namenode:8030</value>
+  </property>
+
+  <property>
+    <name>yarn.resourcemanager.admin.address</name>
+    <value>namenode:8033</value>
+  </property>
+
   <property>
     <name>yarn.resourcemanager.webapp.address</name>
-    <value>namenode:8088</value>
+    <value>0.0.0.0:8088</value>
   </property>
 
-  <!-- NodeManager memory (4 GB per node; reduce to 2048 if RAM is tight) -->
   <property>
     <name>yarn.nodemanager.resource.memory-mb</name>
-    <value>4096</value>
+    <value>3072</value>
+    <description>
+      RAM cho YARN NodeManager. Mặc định 3072MB (phù hợp máy 8GB).
+      Tăng lên 6144 nếu máy worker có 16GB RAM.
+    </description>
   </property>
 
-  <!-- Maximum container allocation -->
   <property>
     <name>yarn.scheduler.maximum-allocation-mb</name>
-    <value>4096</value>
+    <value>3072</value>
   </property>
 
-  <!-- Minimum container allocation -->
   <property>
     <name>yarn.scheduler.minimum-allocation-mb</name>
     <value>256</value>
   </property>
 
-  <!-- NodeManager CPU cores -->
   <property>
     <name>yarn.nodemanager.resource.cpu-vcores</name>
-    <value>4</value>
+    <value>2</value>
   </property>
 
-  <!-- Disable virtual memory check (common issue in Docker/Linux) -->
+  <property>
+    <name>yarn.nodemanager.webapp.address</name>
+    <value>0.0.0.0:8042</value>
+  </property>
+
   <property>
     <name>yarn.nodemanager.vmem-check-enabled</name>
     <value>false</value>
@@ -69,10 +83,33 @@
     <value>false</value>
   </property>
 
-  <!-- Log aggregation -->
   <property>
     <name>yarn.log-aggregation-enable</name>
     <value>true</value>
+  </property>
+
+  <property>
+    <name>yarn.resourcemanager.nm.liveness-monitor.interval-ms</name>
+    <value>3000</value>
+    <description>RM check NodeManager liveness mỗi 3s (mặc định 1s).</description>
+  </property>
+
+  <property>
+    <name>yarn.nm.liveness-monitor.expiry-interval-ms</name>
+    <value>120000</value>
+    <description>120s timeout trước khi RM coi NM là dead. Tăng cho Tailscale latency.</description>
+  </property>
+
+  <property>
+    <name>yarn.resourcemanager.connect.max-wait.ms</name>
+    <value>60000</value>
+    <description>NM đợi RM sẵn sàng tối đa 60s khi start.</description>
+  </property>
+
+  <property>
+    <name>yarn.resourcemanager.connect.retry-interval.ms</name>
+    <value>5000</value>
+    <description>Retry mỗi 5s khi NM chờ RM.</description>
   </property>
 
 </configuration>

@@ -2,31 +2,28 @@
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <!--
   core-site.xml — Hadoop core configuration
-  fs.defaultFS points to NameNode inside Docker network
+  Multi-machine: fs.defaultFS vẫn dùng "namenode" hostname.
+  Worker machines resolve "namenode" → MASTER_TS_IP qua extra_hosts trong docker-compose.worker.yml
+  Master machine: "namenode" resolve trong Docker bridge network như bình thường.
 -->
 <configuration>
 
-  <!-- Default filesystem — NameNode RPC endpoint -->
   <property>
     <name>fs.defaultFS</name>
     <value>hdfs://namenode:9000</value>
-    <description>NameNode URI. Use hdfs://localhost:9000 for single-node local mode.</description>
+    <description>NameNode URI. Worker machines resolve "namenode" via extra_hosts → MASTER_TS_IP.</description>
   </property>
 
-  <!-- Temporary directory for Hadoop processes -->
   <property>
     <name>hadoop.tmp.dir</name>
     <value>/hadoop/tmp</value>
-    <description>Base directory for temporary files.</description>
   </property>
 
-  <!-- HTTP static user for Web UIs (no auth in dev) -->
   <property>
     <name>hadoop.http.staticuser.user</name>
     <value>root</value>
   </property>
 
-  <!-- Allow all users to proxy (needed for Spark submit) -->
   <property>
     <name>hadoop.proxyuser.root.hosts</name>
     <value>*</value>
@@ -35,6 +32,24 @@
   <property>
     <name>hadoop.proxyuser.root.groups</name>
     <value>*</value>
+  </property>
+
+  <property>
+    <name>ipc.client.connect.timeout</name>
+    <value>20000</value>
+    <description>Timeout (ms) kết nối IPC ban đầu. Tăng cho Tailscale latency.</description>
+  </property>
+
+  <property>
+    <name>ipc.client.connect.max.retries</name>
+    <value>20</value>
+    <description>Số lần retry kết nối IPC. Tăng để chịu được drop packet tạm thời trên Tailscale.</description>
+  </property>
+
+  <property>
+    <name>ipc.client.connect.retry.interval</name>
+    <value>1000</value>
+    <description>Khoảng thời gian (ms) giữa các lần retry IPC.</description>
   </property>
 
 </configuration>

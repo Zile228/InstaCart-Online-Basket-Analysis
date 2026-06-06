@@ -32,8 +32,7 @@ RUN ssh-keygen -t rsa -P '' -f /root/.ssh/id_rsa \
     && echo "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile /dev/null" > /root/.ssh/config
 
 # ── Download and install Hadoop 3.4.3 ────────────────────────
-RUN wget \
-    --progress=bar:force:noscroll \
+RUN wget --progress=bar:force:noscroll \
     https://archive.apache.org/dist/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz \
     && tar -xzf hadoop-${HADOOP_VERSION}.tar.gz -C /opt/ \
     && mv /opt/hadoop-${HADOOP_VERSION} ${HADOOP_HOME} \
