@@ -61,6 +61,25 @@
   <property>
     <name>dfs.namenode.use.datanode.hostname</name>
     <value>false</value>
+    <description>
+      QUAN TRỌNG cho multi-machine: NameNode dùng IP (không dùng hostname)
+      để liên lạc ngược về DataNode. DataNode hostname không resolve được
+      từ master machine → phải dùng IP.
+    </description>
+  </property>
+
+  <property>
+    <name>dfs.datanode.use.datanode.hostname</name>
+    <value>false</value>
+  </property>
+
+  <property>
+    <name>dfs.client.use.datanode.hostname</name>
+    <value>false</value>
+    <description>
+      HDFS client (Jupyter/Spark) dùng IP thay hostname khi kết nối DataNode.
+      Cần thiết vì client không thể resolve "datanode1" hostname của worker machine.
+    </description>
   </property>
 
   <property>
