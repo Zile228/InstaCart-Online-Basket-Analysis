@@ -1,23 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
 #  start-worker.sh — Khởi động Worker node
-#
-#  Usage:
-#    ./scripts/start-worker.sh
-#
-#  Yêu cầu trong .env trên máy worker:
-#    MASTER_TS_IP   — Tailscale IP của máy MASTER
-#    WORKER_ID      — 1 hoặc 2
-#    WORKER_MEM     — RAM container (vd: 4G)
-#    WORKER_CORES   — Số core Spark Worker (vd: 2)
-#    YARN_MEM_MB    — RAM YARN NodeManager (vd: 3072)
-#
-#  Thứ tự khởi động BẮT BUỘC:
-#    1. Chạy start-master.sh trên máy master TRƯỚC
-#    2. Chờ NameNode sẵn sàng (http://MASTER_TS_IP:9870)
-#    3. Chạy start-worker.sh trên máy worker
-#
-#  Hoạt động trên: macOS, WSL2 (Windows), Linux
+#  Tương thích: Git Bash (Windows), WSL2, macOS, Linux
 # ============================================================
 
 set -e
@@ -25,31 +9,27 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="$(dirname "$SCRIPT_DIR")"
 
-# ── Kiểm tra .env tồn tại ─────────────────────────────────────
+# ── Kiểm tra .env ─────────────────────────────────────────────
 if [ ! -f "$DOCKER_DIR/.env" ]; then
     echo ""
     echo "  ERROR: Thiếu file .env"
-    echo "  Xem .env.example để biết cách cấu hình:"
-    echo "    cp $DOCKER_DIR/.env.example $DOCKER_DIR/.env"
-    echo ""
-    echo "  Điền vào .env:"
-    echo "    MASTER_TS_IP = Tailscale IP của máy master (lấy từ bạn master)"
-    echo "    WORKER_ID    = 1 hoặc 2"
+    echo "  Chạy: cp $DOCKER_DIR/.env.example $DOCKER_DIR/.env"
+    echo "  Rồi điền MASTER_TS_IP và WORKER_ID vào .env"
     echo ""
     exit 1
 fi
 
-# ── Load biến môi trường từ .env ──────────────────────────────
 set -a
 # shellcheck disable=SC1090
 source "$DOCKER_DIR/.env"
 set +a
 
-# ── Kiểm tra các biến bắt buộc ───────────────────────────────
+# ── Kiểm tra biến bắt buộc ───────────────────────────────────
 if [ -z "${MASTER_TS_IP:-}" ] || [ "$MASTER_TS_IP" = "100.x.x.x" ]; then
     echo ""
     echo "  ERROR: Chưa điền MASTER_TS_IP trong .env"
-    echo "  Lấy Tailscale IP của máy master từ bạn trong nhóm."
+    echo "  Lấy Tailscale IP của máy master từ bạn trong nhóm:"
+    echo "    (bạn master chạy: tailscale ip -4)"
     echo ""
     exit 1
 fi
@@ -57,7 +37,7 @@ fi
 if [ -z "${WORKER_ID:-}" ]; then
     echo ""
     echo "  ERROR: Chưa điền WORKER_ID trong .env"
-    echo "  Đặt WORKER_ID=1 cho worker thứ nhất, WORKER_ID=2 cho worker thứ hai."
+    echo "  Đặt WORKER_ID=1 cho worker thứ nhất, WORKER_ID=2 cho thứ hai"
     echo ""
     exit 1
 fi
@@ -68,85 +48,131 @@ echo "  Khởi động Worker $WORKER_ID"
 echo "  Kết nối đến Master: $MASTER_TS_IP"
 echo "============================================================"
 
-# ── Kiểm tra kết nối Tailscale đến master ────────────────────
+# ── Detect tool kiểm tra kết nối (ưu tiên curl vì Git Bash luôn có) ──
+#
+#  Thứ tự ưu tiên: curl → nc → bỏ qua
+#  Lý do dùng curl thay ping/nc:
+#    - ping  : Git Bash dùng Windows ping.exe, flag khác Linux → không dùng được
+#    - nc    : Git Bash KHÔNG có sẵn, phải cài thêm MinGW
+#    - curl  : Git Bash LUÔN có sẵn (đi kèm Git for Windows)
+#
+CHECK_TOOL=""
+if command -v curl > /dev/null 2>&1; then
+    CHECK_TOOL="curl"
+elif command -v nc > /dev/null 2>&1; then
+    CHECK_TOOL="nc"
+fi
+
+# Hàm kiểm tra 1 host:port
+check_port() {
+    local host=$1
+    local port=$2
+    local timeout=${3:-5}
+    if [ "$CHECK_TOOL" = "curl" ]; then
+        curl -s --connect-timeout "$timeout" --max-time "$timeout" \
+            "http://$host:$port" -o /dev/null 2>/dev/null
+        return $?
+    elif [ "$CHECK_TOOL" = "nc" ]; then
+        nc -z -w "$timeout" "$host" "$port" 2>/dev/null
+        return $?
+    else
+        return 0   # không có tool → giả sử OK, tiếp tục
+    fi
+}
+
+# ── [1/4] Kiểm tra kết nối Tailscale ────────────────────────
 echo ""
 echo "  [1/4] Kiểm tra kết nối Tailscale đến $MASTER_TS_IP..."
 
-if command -v ping > /dev/null 2>&1; then
-    if ping -c 2 -W 3 "$MASTER_TS_IP" > /dev/null 2>&1 || \
-       ping -c 2 -t 3 "$MASTER_TS_IP" > /dev/null 2>&1; then
-        echo "  Ping OK ✓"
-    else
-        echo ""
-        echo "  WARNING: Không ping được $MASTER_TS_IP"
-        echo "  Kiểm tra:"
-        echo "    1. Tailscale đang chạy: tailscale status"
-        echo "    2. Master machine đang online"
-        echo "    3. Cả hai máy cùng tailnet"
-        echo ""
-        echo "  Tiếp tục sau 5 giây (có thể ping bị chặn nhưng port vẫn mở)..."
-        sleep 5
-    fi
+if [ -z "$CHECK_TOOL" ]; then
+    echo "  WARNING: Không tìm thấy curl hay nc — bỏ qua kiểm tra."
+    echo "  Đảm bảo Tailscale đang chạy và master đã start trước khi tiếp tục."
+elif check_port "$MASTER_TS_IP" 9870 5; then
+    echo "  Kết nối OK ✓ (NameNode port 9870 respond)"
+elif check_port "$MASTER_TS_IP" 8080 5; then
+    echo "  Kết nối OK ✓ (Spark port 8080 respond)"
 else
-    echo "  (Lệnh ping không có — bỏ qua bước này)"
+    # Thử port 9092 (Kafka) — master có nhiều port exposed
+    if ! check_port "$MASTER_TS_IP" 9092 5 && ! check_port "$MASTER_TS_IP" 8888 5; then
+        echo ""
+        echo "  WARNING: Không kết nối được đến $MASTER_TS_IP"
+        echo ""
+        echo "  Kiểm tra theo thứ tự:"
+        echo "    1. Tailscale đang chạy:  tailscale status"
+        echo "    2. Máy master đang online và đã join cùng tailnet"
+        echo "    3. IP đúng chưa — hỏi bạn master chạy: tailscale ip -4"
+        echo "    4. Master đã chạy start-master.sh chưa?"
+        echo "       (master cần start TRƯỚC worker)"
+        echo ""
+        echo "  Tiếp tục sau 5 giây..."
+        sleep 5
+    else
+        echo "  Tailscale OK ✓ (host reachable nhưng NameNode chưa start)"
+    fi
 fi
 
-# ── Kiểm tra NameNode Web UI sẵn sàng ────────────────────────
+# ── [2/4] Đợi NameNode sẵn sàng ─────────────────────────────
 echo ""
 echo "  [2/4] Đợi NameNode tại $MASTER_TS_IP:9870..."
-echo "  (Nếu master chưa start → script này sẽ đợi tối đa 3 phút)"
+echo "  (Đợi tối đa 3 phút — nếu master chưa start hãy chạy start-master.sh trên máy master)"
 
-if command -v nc > /dev/null 2>&1; then
+if [ -n "$CHECK_TOOL" ]; then
     TIMEOUT=180
     ELAPSED=0
-    until nc -z "$MASTER_TS_IP" 9870 2>/dev/null; do
+    until check_port "$MASTER_TS_IP" 9870 3; do
         if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
             echo ""
-            echo "  ERROR: NameNode tại $MASTER_TS_IP:9870 không phản hồi sau ${TIMEOUT}s"
-            echo "  Kiểm tra master đã chạy: ./scripts/start-master.sh"
+            echo "  ERROR: NameNode $MASTER_TS_IP:9870 không phản hồi sau ${TIMEOUT}s"
+            echo ""
+            echo "  Kiểm tra trên máy master:"
+            echo "    docker compose -f docker-compose.master.yml ps"
+            echo "    docker compose -f docker-compose.master.yml logs namenode"
+            echo ""
             exit 1
         fi
-        echo "  Chờ NameNode... ($ELAPSED/${TIMEOUT}s)"
+        printf "  Chờ NameNode... (%ds/%ds)\r" "$ELAPSED" "$TIMEOUT"
         sleep 5
         ELAPSED=$((ELAPSED + 5))
     done
-    echo "  NameNode sẵn sàng ✓"
+    echo "  NameNode sẵn sàng ✓                        "
 else
-    echo "  WARNING: Lệnh 'nc' không có — bỏ qua kiểm tra NameNode."
-    echo "  Trên Windows: chạy script này trong WSL2 hoặc Git Bash."
-    echo "  Đảm bảo master đã chạy trước khi tiếp tục."
+    echo "  (Không có curl/nc — bỏ qua, tiếp tục sau 5 giây)"
     sleep 5
 fi
 
-# ── Build images (nếu chưa có) ───────────────────────────────
+# ── [3/4] Build images ───────────────────────────────────────
 echo ""
-echo "  [3/4] Build/pull Docker images..."
+echo "  [3/4] Build Docker images (lần đầu mất 5-10 phút)..."
 docker compose -f "$DOCKER_DIR/docker-compose.worker.yml" \
     --env-file "$DOCKER_DIR/.env" \
-    build --quiet 2>/dev/null || true
+    build --quiet 2>/dev/null || {
+    echo "  (Build không cần thiết hoặc đã có sẵn — tiếp tục)"
+}
 
-# ── Khởi động worker services ─────────────────────────────────
+# ── [4/4] Start worker ────────────────────────────────────────
 echo ""
 echo "  [4/4] Khởi động DataNode + Spark Worker $WORKER_ID..."
 docker compose -f "$DOCKER_DIR/docker-compose.worker.yml" \
     --env-file "$DOCKER_DIR/.env" \
     up -d
 
-# ── Thông báo kết quả ─────────────────────────────────────────
+# ── Thông tin sau khi start ───────────────────────────────────
+WORKER_HOST="$(hostname 2>/dev/null || echo 'localhost')"
+
 echo ""
 echo "============================================================"
-echo "  Worker $WORKER_ID đang khởi động..."
-echo "  Chờ 20-30 giây rồi kiểm tra:"
+echo "  Worker $WORKER_ID đã start! Chờ 20-30 giây rồi kiểm tra."
 echo ""
-echo "  DataNode UI  : http://$(hostname 2>/dev/null || echo 'localhost'):9864"
-echo "  Spark Worker : http://$(hostname 2>/dev/null || echo 'localhost'):808${WORKER_ID}"
-echo "  NodeManager  : http://$(hostname 2>/dev/null || echo 'localhost'):8042"
+echo "  Xem log realtime (để biết DataNode đã đăng ký chưa):"
+echo "    docker compose -f docker-compose.worker.yml logs -f"
+echo ""
+echo "  UI trên máy này (dùng Tailscale IP hoặc localhost):"
+echo "    DataNode UI  : http://$WORKER_HOST:9864"
+echo "    Spark Worker : http://$WORKER_HOST:808${WORKER_ID}"
+echo "    NodeManager  : http://$WORKER_HOST:8042"
 echo ""
 echo "  Kiểm tra đăng ký trên master:"
-echo "    HDFS:  http://$MASTER_TS_IP:9870/dfshealth.html#tab-datanode"
-echo "    YARN:  http://$MASTER_TS_IP:8088/cluster/nodes"
-echo "    Spark: http://$MASTER_TS_IP:8080"
-echo ""
-echo "  Xem log worker:"
-echo "    docker compose -f docker-compose.worker.yml logs -f"
+echo "    HDFS  → http://$MASTER_TS_IP:9870  (tab Datanodes)"
+echo "    YARN  → http://$MASTER_TS_IP:8088/cluster/nodes"
+echo "    Spark → http://$MASTER_TS_IP:8080  (Workers)"
 echo "============================================================"
