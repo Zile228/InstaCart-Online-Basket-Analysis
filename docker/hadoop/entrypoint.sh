@@ -127,7 +127,18 @@ if [ "${HADOOP_ROLE}" = "namenode" ]; then
 elif [ "${HADOOP_ROLE}" = "datanode" ]; then
 
     mkdir -p "${DATANODE_DIR}" /hadoop/tmp "${HADOOP_HOME}/logs"
-    wait_for_service namenode 9870 40 5
+
+    # Ưu tiên dùng SERVICE_PRECONDITION (format: "HOST:PORT") để wait
+    # Khi chạy trên worker machine, SERVICE_PRECONDITION="${MASTER_TS_IP}:9870"
+    # → tránh wait bằng hostname "namenode" có thể chưa resolve kịp
+    if [ -n "${SERVICE_PRECONDITION:-}" ]; then
+        WAIT_HOST=$(echo "$SERVICE_PRECONDITION" | cut -d: -f1)
+        WAIT_PORT=$(echo "$SERVICE_PRECONDITION" | cut -d: -f2)
+        echo "Waiting for NameNode via SERVICE_PRECONDITION: ${WAIT_HOST}:${WAIT_PORT}"
+        wait_for_service "${WAIT_HOST}" "${WAIT_PORT}" 40 5
+    else
+        wait_for_service namenode 9870 40 5
+    fi
 
     echo "Starting DataNode..."
     hdfs datanode &

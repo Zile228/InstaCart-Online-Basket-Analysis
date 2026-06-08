@@ -72,23 +72,39 @@ echo "============================================================"
 echo ""
 echo "  [1/4] Kiểm tra kết nối Tailscale đến $MASTER_TS_IP..."
 
-if command -v ping > /dev/null 2>&1; then
-    if ping -c 2 -W 3 "$MASTER_TS_IP" > /dev/null 2>&1 || \
-       ping -c 2 -t 3 "$MASTER_TS_IP" > /dev/null 2>&1; then
-        echo "  Ping OK ✓"
+# Dùng nc thay ping vì:
+#   - ping -W (timeout) không có trên macOS (dùng -t)
+#   - ping có thể bị chặn bởi firewall/Tailscale ACL
+#   - nc -z kiểm tra port trực tiếp, tin cậy hơn trên mọi OS
+NC_OK=false
+if command -v nc > /dev/null 2>&1; then
+    # Thử kết nối port 9870 (NameNode Web UI) để xác nhận Tailscale hoạt động
+    if nc -z -w 3 "$MASTER_TS_IP" 9870 2>/dev/null; then
+        echo "  Kết nối Tailscale OK ✓ (port 9870 respond)"
+        NC_OK=true
+    elif nc -z -w 3 "$MASTER_TS_IP" 22 2>/dev/null || \
+         nc -z -w 3 "$MASTER_TS_IP" 80 2>/dev/null; then
+        echo "  Tailscale OK ✓ (host reachable — master service chưa start)"
+        NC_OK=true
     else
         echo ""
-        echo "  WARNING: Không ping được $MASTER_TS_IP"
-        echo "  Kiểm tra:"
-        echo "    1. Tailscale đang chạy: tailscale status"
-        echo "    2. Master machine đang online"
-        echo "    3. Cả hai máy cùng tailnet"
+        echo "  WARNING: Không kết nối được đến $MASTER_TS_IP"
         echo ""
-        echo "  Tiếp tục sau 5 giây (có thể ping bị chặn nhưng port vẫn mở)..."
+        echo "  Kiểm tra theo thứ tự:"
+        echo "    1. Tailscale đang chạy trên máy này:"
+        echo "         tailscale status"
+        echo "    2. Máy master đang online và đã join cùng tailnet"
+        echo "    3. Đúng IP chưa — IP Tailscale của master:"
+        echo "         (hỏi bạn master chạy: tailscale ip -4)"
+        echo "    4. Master đã chạy start-master.sh chưa?"
+        echo ""
+        echo "  Tiếp tục sau 5 giây..."
         sleep 5
     fi
 else
-    echo "  (Lệnh ping không có — bỏ qua bước này)"
+    echo "  WARNING: Lệnh 'nc' không tìm thấy."
+    echo "  Trên Windows: chạy script trong WSL2 (không phải PowerShell/CMD)"
+    echo "  Bỏ qua kiểm tra kết nối..."
 fi
 
 # ── Kiểm tra NameNode Web UI sẵn sàng ────────────────────────
