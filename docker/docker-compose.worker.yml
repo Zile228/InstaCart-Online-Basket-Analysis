@@ -63,6 +63,7 @@ services:
       SERVICE_PRECONDITION: "${MASTER_TS_IP}:9870"
       # Ghi đè cấu hình memory YARN theo .env (tuỳ RAM máy worker)
       YARN_NODEMANAGER_RESOURCE_MEMORY_MB: "${YARN_MEM_MB:-3072}"
+      HDFS_DATANODE_OPTS: "-Ddfs.datanode.hostname=${WORKER_TS_IP}"
     volumes:
       - hadoop_datanode:/hadoop/dfs/data
       - ./hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
