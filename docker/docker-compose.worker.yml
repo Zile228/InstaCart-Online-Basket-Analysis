@@ -38,6 +38,9 @@ networks:
 # ─────────────────────────────────────────────────────────────
 services:
   datanode:
+    build:
+      context: ./hadoop
+      dockerfile: Dockerfile
     image: instacart-hadoop:3.4.3
     container_name: datanode-${WORKER_ID:-1}
     # QUAN TRỌNG: hostname phải là "datanodeX" để NameNode nhận ra
@@ -86,6 +89,9 @@ services:
 #    (tránh xung đột nếu sau này nhiều worker trên cùng máy)
 # ─────────────────────────────────────────────────────────────
   spark-worker:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
     image: instacart-spark:4.1.1
     container_name: spark-worker-${WORKER_ID:-1}
     hostname: spark-worker-${WORKER_ID:-1}
