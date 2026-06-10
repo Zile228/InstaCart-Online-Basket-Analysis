@@ -63,6 +63,7 @@ services:
       SERVICE_PRECONDITION: "${MASTER_TS_IP}:9870"
       # Ghi đè cấu hình memory YARN theo .env (tuỳ RAM máy worker)
       YARN_NODEMANAGER_RESOURCE_MEMORY_MB: "${YARN_MEM_MB:-3072}"
+      HDFS_DATANODE_OPTS: "-Ddfs.datanode.hostname=${WORKER_TS_IP}"
     volumes:
       - hadoop_datanode:/hadoop/dfs/data
       - ./hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
@@ -95,7 +96,9 @@ services:
     container_name: spark-worker-${WORKER_ID:-1}
     hostname: spark-worker-${WORKER_ID:-1}
     ports:
-      - "808${WORKER_ID:-1}:8081"   # Web UI: worker-1 → 8081, worker-2 → 8082
+      # SPARK_WORKER_PORT diều chỉnh trong .env: worker-1→8081, worker-2→8082
+      # Không dùng "808${WORKER_ID}:8081" vì Git Bash không expand variable trong YAML string
+      - "${SPARK_WORKER_PORT:-8081}:8081"
     extra_hosts:
       # QUAN TRỌNG: resolve "spark-master" → Tailscale IP của master machine
       # Spark Worker gọi spark-master:7077 để đăng ký
