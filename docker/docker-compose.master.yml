@@ -25,6 +25,10 @@ services:
     build:
       context: ./hadoop
       dockerfile: Dockerfile
+      args:
+        # Inject DFS_REPLICATION vào hdfs-site.xml lúc build (Hadoop không đọc env var trong XML)
+        # Đổi giá trị trong .env rồi rebuild: docker compose build --no-cache namenode
+        DFS_REPLICATION: "${DFS_REPLICATION:-1}"
     image: instacart-hadoop:3.4.3
     container_name: namenode
     hostname: namenode
@@ -33,8 +37,8 @@ services:
       - "9000:9000"   # HDFS RPC         ← Worker DataNode kết nối vào đây
       - "8088:8088"   # YARN RM Web UI   → http://MASTER_TS_IP:8088
       - "8032:8032"   # YARN RM Scheduler← Worker NodeManager đăng ký vào đây
-      - "8030:8030"   # YARN RM Resource ← Cần cho NM cross-machine
-      - "8031:8031"   # YARN RM Admin    ← Cần cho NM cross-machine
+      - "8030:8030"   # YARN RM Resource Scheduler ← Cần cho NM cross-machine
+      - "8031:8031"   # YARN RM Resource Tracker  ← NodeManager đăng ký vào đây (không phải Admin — 8033 mới là Admin)
     networks:
       - bigdata-net
     environment:
