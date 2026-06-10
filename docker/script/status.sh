@@ -21,6 +21,24 @@ fi
 
 MASTER="${MASTER_TS_IP:-localhost}"
 
+# ── Kiểm tra nc có sẵn không ─────────────────────────────────
+# Git Bash (Windows) thường không có nc → fallback sang bash /dev/tcp
+CHECK_NC=true
+if ! command -v nc > /dev/null 2>&1; then
+    echo "  nc không có — dùng bash /dev/tcp fallback"
+    CHECK_NC=false
+fi
+
+# ── Helper: TCP check (nc hoặc bash fallback) ─────────────────
+tcp_check() {
+    local host=$1 port=$2
+    if [ "$CHECK_NC" = "true" ]; then
+        nc -z "$host" "$port" 2>/dev/null
+    else
+        (bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null)
+    fi
+}
+
 # ── Helper: kiểm tra 1 service ───────────────────────────────
 check_service() {
     local name=$1
@@ -28,7 +46,7 @@ check_service() {
     local port=$3
     local url=$4
 
-    if nc -z "$host" "$port" 2>/dev/null; then
+    if tcp_check "$host" "$port"; then
         printf "  %-28s \033[32m✓ UP\033[0m    %s\n" "$name" "$url"
     else
         printf "  %-28s \033[31m✗ DOWN\033[0m  port $port không respond\n" "$name"
