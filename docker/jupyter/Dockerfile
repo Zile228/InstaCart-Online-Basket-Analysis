@@ -33,13 +33,13 @@ RUN pip3 install --no-cache-dir \
     "notebook==7.2.2" \
     jupyterlab \
     pandas==2.2.2 \
-    numpy==1.26.4 \
+    numpy >=2.0.0 \
     matplotlib==3.9.0 \
     seaborn==0.13.2 \
     scikit-learn==1.5.0 \
     confluent-kafka==2.5.0 \
     python-dotenv==1.0.1 \
-    pyarrow==16.1.0 \
+    pyarrow==17.0.0 \
     tqdm==4.66.4 \
     supabase==2.4.0
 

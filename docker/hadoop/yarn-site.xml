@@ -40,6 +40,14 @@
   </property>
 
   <property>
+    <!-- Port 8031: Resource Tracker — NodeManager đăng ký resource với RM.
+         Lưu ý: 8031 ≠ Admin. Port Admin thực sự là 8033 (ở trên).
+         Cần expose 8031 trong docker-compose.master.yml cho cross-machine NM. -->
+    <name>yarn.resourcemanager.resource-tracker.address</name>
+    <value>namenode:8031</value>
+  </property>
+
+  <property>
     <name>yarn.resourcemanager.webapp.address</name>
     <value>0.0.0.0:8088</value>
   </property>

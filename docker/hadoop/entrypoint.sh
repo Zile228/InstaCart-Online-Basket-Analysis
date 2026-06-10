@@ -9,6 +9,10 @@
 # một lệnh phụ fail không nên kéo chết toàn bộ container.
 set -u
 
+# Fallback cho HADOOP_VERSION: biến được set bởi Dockerfile ENV,
+# nhưng với set -u, nếu không được export đúng cách sẽ gây lỗi unbound.
+HADOOP_VERSION="${HADOOP_VERSION:-3.4.3}"
+
 HADOOP_ROLE="${HADOOP_ROLE:-namenode}"
 NAMENODE_DIR="/hadoop/dfs/name"
 DATANODE_DIR="/hadoop/dfs/data"
@@ -127,6 +131,22 @@ if [ "${HADOOP_ROLE}" = "namenode" ]; then
 elif [ "${HADOOP_ROLE}" = "datanode" ]; then
 
     mkdir -p "${DATANODE_DIR}" /hadoop/tmp "${HADOOP_HOME}/logs"
+
+    # ── Override YARN NodeManager memory từ env var ────────────────
+    # Hadoop không đọc env var để override XML → dùng HADOOP_CONF_DIR trick:
+    # copy toàn bộ config ra thư mục riêng, sed giá trị, rồi trỏ Hadoop vào đó.
+    # Cách này không đụng file :ro được mount từ host.
+    if [ -n "${YARN_NODEMANAGER_RESOURCE_MEMORY_MB:-}" ]; then
+        echo "Overriding YARN NM memory → ${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}MB"
+        mkdir -p /hadoop/conf-override
+        cp -r "${HADOOP_HOME}/etc/hadoop/." /hadoop/conf-override/
+        sed -i "/<name>yarn.nodemanager.resource.memory-mb<\/name>/{n; s|<value>[0-9]*</value>|<value>${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}</value>|}" \
+            /hadoop/conf-override/yarn-site.xml
+        sed -i "/<name>yarn.scheduler.maximum-allocation-mb<\/name>/{n; s|<value>[0-9]*</value>|<value>${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}</value>|}" \
+            /hadoop/conf-override/yarn-site.xml
+        export HADOOP_CONF_DIR=/hadoop/conf-override
+        echo "  HADOOP_CONF_DIR=${HADOOP_CONF_DIR}"
+    fi
 
     # Ưu tiên dùng SERVICE_PRECONDITION (format: "HOST:PORT") để wait
     # Khi chạy trên worker machine, SERVICE_PRECONDITION="${MASTER_TS_IP}:9870"

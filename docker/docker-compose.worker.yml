@@ -41,6 +41,9 @@ services:
     build:
       context: ./hadoop
       dockerfile: Dockerfile
+      args:
+        # Phải match với giá trị build trên master để HDFS không bị lệch replication
+        DFS_REPLICATION: "${DFS_REPLICATION:-1}"
     image: instacart-hadoop:3.4.3
     container_name: datanode-${WORKER_ID:-1}
     # QUAN TRỌNG: hostname phải là "datanodeX" để NameNode nhận ra
@@ -62,8 +65,11 @@ services:
       # hoạt động đúng ngay từ lúc container chưa resolve hostname
       SERVICE_PRECONDITION: "${MASTER_TS_IP}:9870"
       # Ghi đè cấu hình memory YARN theo .env (tuỳ RAM máy worker)
+      # entrypoint.sh đọc biến này và override yarn-site.xml qua HADOOP_CONF_DIR
       YARN_NODEMANAGER_RESOURCE_MEMORY_MB: "${YARN_MEM_MB:-3072}"
-      HDFS_DATANODE_OPTS: "-Ddfs.datanode.hostname=${WORKER_TS_IP}"
+      # HDFS_DATANODE_OPTS đã xoá: "-Ddfs.datanode.hostname=..." không có tác dụng vì
+      # dfs.datanode.hostname là Hadoop config property, không phải JVM system property.
+      # Đã set dfs.datanode.use.datanode.hostname=false trong hdfs-site.xml → DataNode tự dùng IP.
     volumes:
       - hadoop_datanode:/hadoop/dfs/data
       - ./hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
