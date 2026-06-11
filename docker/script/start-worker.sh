@@ -20,9 +20,17 @@ if [ ! -f "$DOCKER_DIR/.env" ]; then
 fi
 
 set -a
+# Tính SPARK_WORKER_PORT từ WORKER_ID nếu chưa set trong .env
+# worker-1 → 8081, worker-2 → 8082, ...
 # shellcheck disable=SC1090
 source "$DOCKER_DIR/.env"
 set +a
+
+# Tự tính SPARK_WORKER_PORT nếu chưa có trong .env
+if [ -z "${SPARK_WORKER_PORT:-}" ]; then
+    SPARK_WORKER_PORT="808${WORKER_ID:-1}"
+    export SPARK_WORKER_PORT
+fi
 
 # ── Kiểm tra biến bắt buộc ───────────────────────────────────
 if [ -z "${MASTER_TS_IP:-}" ] || [ "$MASTER_TS_IP" = "100.x.x.x" ]; then
@@ -168,7 +176,7 @@ echo "    docker compose -f docker-compose.worker.yml logs -f"
 echo ""
 echo "  UI trên máy này (dùng Tailscale IP hoặc localhost):"
 echo "    DataNode UI  : http://$WORKER_HOST:9864"
-echo "    Spark Worker : http://$WORKER_HOST:808${WORKER_ID}"
+echo "    Spark Worker : http://$WORKER_HOST:$SPARK_WORKER_PORT"
 echo "    NodeManager  : http://$WORKER_HOST:8042"
 echo ""
 echo "  Kiểm tra đăng ký trên master:"

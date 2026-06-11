@@ -39,8 +39,14 @@ RUN wget --progress=bar:force:noscroll \
     && rm hadoop-${HADOOP_VERSION}.tar.gz
 
 # ── Copy Hadoop config files ──────────────────────────────────
+# DFS_REPLICATION: truyền qua --build-arg hoặc args: trong docker-compose
+# Hadoop không đọc env var trong XML → phải inject tại build time bằng sed
+# docker-compose.master.yml: args: DFS_REPLICATION: "${DFS_REPLICATION:-1}"
+ARG DFS_REPLICATION=1
 COPY core-site.xml     ${HADOOP_HOME}/etc/hadoop/core-site.xml
 COPY hdfs-site.xml     ${HADOOP_HOME}/etc/hadoop/hdfs-site.xml
+RUN sed -i "s|<value>1</value>|<value>${DFS_REPLICATION}</value>|" \
+    ${HADOOP_HOME}/etc/hadoop/hdfs-site.xml
 COPY yarn-site.xml     ${HADOOP_HOME}/etc/hadoop/yarn-site.xml
 COPY mapred-site.xml   ${HADOOP_HOME}/etc/hadoop/mapred-site.xml
 COPY hadoop-env.sh     ${HADOOP_HOME}/etc/hadoop/hadoop-env.sh
