@@ -61,6 +61,44 @@ print(f"\nSpark version : {spark.version}")
 print(f"Scala version : {spark.sparkContext._jvm.scala.util.Properties.versionString()}")
 print("SparkSession initialized successfully ✓")
 
+
+def read_instacart_csv(path):
+    return (
+        spark.read.option("header", True)
+        .option("inferSchema", True)
+        .option("quote", '"')
+        .option("escape", "\\")
+        .option("multiLine", True)
+        .csv(path)
+    )
+
+
+def read_products_csv(path):
+    import csv
+    from io import StringIO
+    from pyspark.sql.types import StructField, StringType, StructType
+
+    text = "\n".join(spark.sparkContext.textFile(path).collect())
+    reader = csv.DictReader(StringIO(text))
+    rows = [
+        (
+            int(row["product_id"]),
+            row["product_name"],
+            int(row["aisle_id"]),
+            int(row["department_id"]),
+        )
+        for row in reader
+    ]
+    schema = StructType(
+        [
+            StructField("product_id", IntegerType(), False),
+            StructField("product_name", StringType(), True),
+            StructField("aisle_id", IntegerType(), True),
+            StructField("department_id", IntegerType(), True),
+        ]
+    )
+    return spark.createDataFrame(rows, schema)
+
 # %% [markdown]
 # ## CELL 2 — Load 6 bảng từ HDFS
 
@@ -74,19 +112,14 @@ FEATURES_BASE = f"{HDFS_NAMENODE}/instacart/features"
 print(f"Loading data from: {BASE}")
 print("-" * 50)
 
-# Load 6 CSV tables
-orders      = spark.read.csv(f"{BASE}/orders.csv",
-                              header=True, inferSchema=True)
-prior       = spark.read.csv(f"{BASE}/order_products__prior.csv",
-                              header=True, inferSchema=True)
-train       = spark.read.csv(f"{BASE}/order_products__train.csv",
-                              header=True, inferSchema=True)
-products    = spark.read.csv(f"{BASE}/products.csv",
-                              header=True, inferSchema=True)
-aisles      = spark.read.csv(f"{BASE}/aisles.csv",
-                              header=True, inferSchema=True)
-departments = spark.read.csv(f"{BASE}/departments.csv",
-                              header=True, inferSchema=True)
+# Load 6 CSV tables. `products.csv` contains escaped quotes and commas inside
+# product names, so keep the same CSV options everywhere for schema stability.
+orders      = read_instacart_csv(f"{BASE}/orders.csv")
+prior       = read_instacart_csv(f"{BASE}/order_products__prior.csv")
+train       = read_instacart_csv(f"{BASE}/order_products__train.csv")
+products    = read_products_csv(f"{BASE}/products.csv")
+aisles      = read_instacart_csv(f"{BASE}/aisles.csv")
+departments = read_instacart_csv(f"{BASE}/departments.csv")
 
 # Verify shape of each table
 tables = [

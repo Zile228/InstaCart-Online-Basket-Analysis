@@ -163,7 +163,7 @@ def validate_data_dir(data_dir: Path) -> Dict[str, Path]:
 def read_csvs(spark: SparkSession, data_dir: Path, sample_fraction: float, seed: int) -> Dict[str, DataFrame]:
     paths = validate_data_dir(data_dir)
     dfs = {
-        name: spark.read.csv(str(path), header=True, inferSchema=True)
+        name: read_products_csv(spark, str(path)) if name == "products" else read_instacart_csv(spark, path)
         for name, path in paths.items()
     }
 
@@ -177,6 +177,44 @@ def read_csvs(spark: SparkSession, data_dir: Path, sample_fraction: float, seed:
         dfs["train"] = dfs["train"].join(order_ids, "order_id", "inner")
 
     return dfs
+
+
+def read_instacart_csv(spark: SparkSession, path: Path) -> DataFrame:
+    return (
+        spark.read.option("header", True)
+        .option("inferSchema", True)
+        .option("quote", '"')
+        .option("escape", "\\")
+        .option("multiLine", True)
+        .csv(str(path))
+    )
+
+
+def read_products_csv(spark: SparkSession, path: str) -> DataFrame:
+    import csv
+    from io import StringIO
+    from pyspark.sql.types import StructField, StringType, StructType
+
+    text = "\n".join(spark.sparkContext.textFile(path).collect())
+    reader = csv.DictReader(StringIO(text))
+    rows = [
+        (
+            int(row["product_id"]),
+            row["product_name"],
+            int(row["aisle_id"]),
+            int(row["department_id"]),
+        )
+        for row in reader
+    ]
+    schema = StructType(
+        [
+            StructField("product_id", IntegerType(), False),
+            StructField("product_name", StringType(), True),
+            StructField("aisle_id", IntegerType(), True),
+            StructField("department_id", IntegerType(), True),
+        ]
+    )
+    return spark.createDataFrame(rows, schema)
 
 
 def safe_write(df: DataFrame, path: Path, mode: str = "overwrite") -> None:
