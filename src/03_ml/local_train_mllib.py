@@ -535,6 +535,8 @@ def train_reorder(
             "p_aisle_id": -1,
         }
     ).withColumn("label", F.col("reordered").cast(DoubleType()))
+    for col_name in numerical_features:
+        data = data.withColumn(col_name, F.col(col_name).cast(DoubleType()))
 
     train_df, test_df = split_by_user(data, seed)
     train_df, class_weights = add_class_weights(train_df)
@@ -594,6 +596,8 @@ def train_segmentation(
     fill_defaults = {col: 0.0 for col in feature_cols}
     fill_defaults.update({"frequency": 1.0, "volume": 1.0})
     rfv = rfv.fillna(fill_defaults).cache()
+    for col_name in feature_cols:
+        rfv = rfv.withColumn(col_name, F.col(col_name).cast(DoubleType()))
     user_count = rfv.count()
     if user_count < 3:
         report = {"task": "customer_segmentation", "skipped": True, "reason": "Need at least 3 users."}
