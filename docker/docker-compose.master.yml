@@ -41,6 +41,12 @@ services:
       - "8031:8031"   # YARN RM Resource Tracker  ← NodeManager đăng ký vào đây (không phải Admin — 8033 mới là Admin)
     networks:
       - bigdata-net
+    # SỬA: cần thiết vì hdfs-site.xml giờ dùng dfs.namenode.use.datanode.hostname=true
+    # NameNode phải resolve "datanode1"/"datanode2" để định danh + liên lạc ngược
+    # về 2 datanode khác máy (tránh trùng IP do Docker Desktop NAT).
+    extra_hosts:
+      - "datanode1:${WORKER1_TS_IP:-127.0.0.1}"
+      - "datanode2:${WORKER2_TS_IP:-127.0.0.1}"
     environment:
       HADOOP_ROLE: namenode
       HDFS_NAMENODE: hdfs://namenode:9000
