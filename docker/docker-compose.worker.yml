@@ -51,9 +51,16 @@ services:
     # Đồng thời DataNode sẽ tự báo IP thay vì hostname nhờ dfs.datanode.hostname.check=false
     hostname: datanode${WORKER_ID:-1}
     ports:
-      - "9864:9864"   # DataNode Web UI  → http://WORKER_TS_IP:9864
-      - "9866:9866"   # DataNode transfer port (HDFS read/write từ client)
-      - "9867:9867"   # DataNode IPC port
+      # SỬA: port lệch +10 mỗi WORKER_ID (xem hadoop/entrypoint.sh) để NameNode
+      # phân biệt được 2 worker dù IP đều bị Docker Desktop NAT thành cùng
+      # 192.168.65.1. WORKER_ID=1 → 9864/9866/9867 (mặc định, không đổi);
+      # WORKER_ID=2 → 9874/9876/9877.
+      # Compose không hỗ trợ arithmetic trực tiếp, nên set PORT_OFFSET trong
+      # .env: WORKER_ID=1 → để PORT_OFFSET trống hoặc =0; WORKER_ID=2 →
+      # PORT_OFFSET=10.
+      - "${DN_HTTP_PORT:-9864}:${DN_HTTP_PORT:-9864}"   # DataNode Web UI  → http://WORKER_TS_IP:986x
+      - "${DN_XFER_PORT:-9866}:${DN_XFER_PORT:-9866}"   # DataNode transfer port (HDFS read/write từ client)
+      - "${DN_IPC_PORT:-9867}:${DN_IPC_PORT:-9867}"     # DataNode IPC port
       - "8042:8042"   # NodeManager Web UI → http://WORKER_TS_IP:8042
     extra_hosts:
       # QUAN TRỌNG: resolve "namenode" → Tailscale IP của master machine
@@ -73,6 +80,15 @@ services:
       # Lấy IP: tailscale ip -4 (trên máy worker), điền vào WORKER_TS_IP trong .env.
       # worker-1 dùng WORKER1_TS_IP, worker-2 dùng WORKER2_TS_IP.
       DATANODE_HOST: "${WORKER_TS_IP}"
+      # SỬA: WORKER_ID cần truyền vào container để entrypoint.sh tự tính
+      # DN_XFER_PORT/DN_HTTP_PORT/DN_IPC_PORT (offset +10 mỗi WORKER_ID),
+      # giúp NameNode phân biệt 2 worker dù IP bị NAT trùng (192.168.65.1).
+      WORKER_ID: "${WORKER_ID:-1}"
+      # Có thể override port trực tiếp qua .env nếu cần (để khớp với phần
+      # "ports:" publish ở trên — phải set CÙNG GIÁ TRỊ ở .env nếu override).
+      DN_XFER_PORT: "${DN_XFER_PORT:-}"
+      DN_HTTP_PORT: "${DN_HTTP_PORT:-}"
+      DN_IPC_PORT: "${DN_IPC_PORT:-}"
     volumes:
       - hadoop_datanode:/hadoop/dfs/data
       # FIX: Đã XOÁ mount hdfs-site.xml từ host vào container.
