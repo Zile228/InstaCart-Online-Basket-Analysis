@@ -60,25 +60,46 @@
 
   <property>
     <name>dfs.namenode.use.datanode.hostname</name>
-    <value>false</value>
+    <value>true</value>
     <description>
-      QUAN TRỌNG cho multi-machine: NameNode dùng IP (không dùng hostname)
-      để liên lạc ngược về DataNode. DataNode hostname không resolve được
-      từ master machine → phải dùng IP.
+      SỬA: bật true để NameNode dùng HOSTNAME (datanode1/datanode2) thay vì IP
+      khi định danh và liên lạc ngược về DataNode.
+      Lý do: trên Docker Desktop (Windows/macOS), traffic từ container worker
+      machine đến namenode đều bị NAT về cùng 1 IP nội bộ (vd 192.168.65.1)
+      bất kể máy worker nào — khiến NameNode coi 2 datanode khác máy là MỘT
+      node (trùng IP registration), datanode report sau ghi đè datanode report
+      trước → luôn chỉ thấy 1 live datanode.
+      Dùng hostname (set qua dfs.datanode.use.datanode.hostname=true bên dưới
+      + HADOOP_DATANODE_OPTS trong entrypoint.sh) giải quyết việc trùng IP.
+      YÊU CẦU: namenode container phải resolve được "datanode1"/"datanode2"
+      → thêm extra_hosts trong docker-compose.master.yml cho service namenode:
+        extra_hosts:
+          - "datanode1:${WORKER1_TS_IP:-127.0.0.1}"
+          - "datanode2:${WORKER2_TS_IP:-127.0.0.1}"
     </description>
   </property>
 
   <property>
     <name>dfs.datanode.use.datanode.hostname</name>
-    <value>false</value>
+    <value>true</value>
+    <description>
+      SỬA: bật true — DataNode tự báo bằng HOSTNAME (datanode1/datanode2,
+      set qua -Ddfs.datanode.hostname trong HADOOP_DATANODE_OPTS) thay vì
+      IP socket (luôn bị NAT thành 192.168.65.1 trên Docker Desktop).
+      Phải đi cùng với dfs.namenode.use.datanode.hostname=true ở trên.
+    </description>
   </property>
 
   <property>
     <name>dfs.client.use.datanode.hostname</name>
-    <value>false</value>
+    <value>true</value>
     <description>
-      HDFS client (Jupyter/Spark) dùng IP thay hostname khi kết nối DataNode.
-      Cần thiết vì client không thể resolve "datanode1" hostname của worker machine.
+      SỬA: bật true — HDFS client (Jupyter/Spark) cũng dùng hostname
+      "datanode1"/"datanode2" để đọc/ghi block trực tiếp.
+      YÊU CẦU: container jupyter phải resolve được 2 hostname này
+      (đã có extra_hosts datanode1/datanode2 trong docker-compose.master.yml
+      cho service jupyter — chỉ cần đảm bảo WORKER1_TS_IP/WORKER2_TS_IP
+      trong .env của master đã điền đúng).
     </description>
   </property>
 
