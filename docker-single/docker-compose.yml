@@ -1,0 +1,147 @@
+# File docker-compose.yml phuc vu moi truong Single-node gon nhe
+# Spark se chay o che do local[*] ngay trong Jupyter nen khong can thiet lap rieng spark-master/worker
+#
+# Uoc luong tong dung luong RAM can thiet: khoang 4 GB
+# - namenode: 900 MB
+# - datanode: 700 MB
+# - kafka: 400 MB
+# - jupyter: 2 GB (bao gom ca vung thuc thi Spark)
+
+networks:
+  bigdata-net:
+    driver: bridge
+
+services:
+
+  # Thiet lap cho NameNode va YARN ResourceManager
+  namenode:
+    build:
+      context: ./hadoop
+      dockerfile: Dockerfile
+      args:
+        DFS_REPLICATION: "1"
+    image: instacart-hadoop:3.4.3
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"   # NameNode Web UI -> http://localhost:9870
+      - "9000:9000"   # Cong giao tiep HDFS RPC
+      - "8088:8088"   # YARN RM Web UI -> http://localhost:8088
+      - "8032:8032"
+      - "8030:8030"
+      - "8031:8031"
+    networks:
+      - bigdata-net
+    environment:
+      HADOOP_ROLE: namenode
+      HADOOP_NAMENODE_OPTS: "-Xmx512m -Xms256m"
+      YARN_RESOURCEMANAGER_OPTS: "-Xmx256m -Xms128m"
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+      - hadoop_tmp:/hadoop/tmp
+    cpus: "0.8"
+    mem_limit: 900m
+    memswap_limit: 900m
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "hdfs", "dfsadmin", "-safemode", "get"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Thiet lap cho DataNode va NodeManager
+  datanode:
+    image: instacart-hadoop:3.4.3
+    container_name: datanode
+    hostname: datanode1
+    ports:
+      - "9864:9864"   # DataNode Web UI -> http://localhost:9864
+      - "9866:9866"
+      - "9867:9867"
+      - "8042:8042"   # NodeManager Web UI -> http://localhost:8042
+    networks:
+      - bigdata-net
+    environment:
+      HADOOP_ROLE: datanode
+      SERVICE_PRECONDITION: "namenode:9870"
+      HADOOP_DATANODE_OPTS: "-Xmx256m -Xms128m"
+      YARN_NODEMANAGER_OPTS: "-Xmx256m -Xms128m"
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    cpus: "0.5"
+    mem_limit: 700m
+    memswap_limit: 700m
+    restart: on-failure
+    depends_on:
+      namenode:
+        condition: service_healthy
+
+  # Thiet lap cho he thong tin nhan message queue Kafka
+  kafka:
+    image: apache/kafka:4.1.2
+    container_name: kafka
+    hostname: kafka
+    ports:
+      - "9092:9092"   # Cong ket noi tu ngoai container -> localhost:9092
+    networks:
+      - bigdata-net
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "${KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}"
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms128m"
+    cpus: "0.5"
+    mem_limit: 400m
+    memswap_limit: 400m
+    restart: on-failure
+    depends_on:
+      namenode:
+        condition: service_healthy
+
+  # Thiet lap cho Jupyter va Spark chay o che do local[*]
+  # He thong se chay thuc thi Spark truc tiep ben trong container nay de giao tiep truc tiep voi HDFS va Kafka
+  # Bạn co the theo doi giao dien quan ly Spark UI tai dia chi http://localhost:4040 khi co job dang chay
+  jupyter:
+    build:
+      context: ./jupyter
+      dockerfile: Dockerfile
+    image: instacart-jupyter:latest
+    container_name: jupyter
+    hostname: jupyter
+    ports:
+      - "8888:8888"   # Jupyter Web UI -> http://localhost:8888
+      - "4040:4040"   # Spark App UI -> http://localhost:4040
+    networks:
+      - bigdata-net
+    environment:
+      SPARK_MASTER: "local[*]"
+      HDFS_NAMENODE: hdfs://namenode:9000
+      PYSPARK_PYTHON: python3
+    volumes:
+      - ../src:/home/nhom05/work
+      - ../data:/home/nhom05/data
+      - ./spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    cpus: "2.0"
+    mem_limit: 2g
+    memswap_limit: 2g
+    restart: on-failure
+    depends_on:
+      namenode:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  hadoop_tmp:

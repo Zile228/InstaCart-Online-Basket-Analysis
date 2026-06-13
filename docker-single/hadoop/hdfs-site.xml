@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  hdfs-site.xml - File cau hinh cho HDFS (single-node)
+  Thiet lap cac thong so de NameNode va DataNode de dang ket noi va giao tiep trong Docker
+-->
+<configuration>
+
+  <property>
+    <name>dfs.replication</name>
+    <value>1</value>
+  </property>
+
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>/hadoop/dfs/name</value>
+  </property>
+
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>/hadoop/dfs/data</value>
+  </property>
+
+  <property>
+    <name>dfs.blocksize</name>
+    <value>134217728</value>
+    <description>Thiet lap kich thuoc block mac dinh la 128 MB</description>
+  </property>
+
+  <property>
+    <name>dfs.namenode.http-address</name>
+    <value>namenode:9870</value>
+  </property>
+
+  <property>
+    <name>dfs.namenode.rpc-address</name>
+    <value>namenode:9000</value>
+  </property>
+
+  <property>
+    <name>dfs.namenode.datanode.registration.ip-hostname-check</name>
+    <value>false</value>
+  </property>
+
+  <property>
+    <name>dfs.permissions.enabled</name>
+    <value>false</value>
+  </property>
+
+  <property>
+    <name>dfs.webhdfs.enabled</name>
+    <value>true</value>
+  </property>
+
+  <!--
+    Bat tinh nang nhan dien qua hostname de tan dung co che tu phan giai ten mien cua Docker bridge network
+  -->
+  <property>
+    <name>dfs.namenode.use.datanode.hostname</name>
+    <value>true</value>
+  </property>
+
+  <property>
+    <name>dfs.datanode.use.datanode.hostname</name>
+    <value>true</value>
+  </property>
+
+  <property>
+    <name>dfs.client.use.datanode.hostname</name>
+    <value>true</value>
+  </property>
+
+  <!-- Thiet lap cho DataNode lang nghe tren tat ca card mang (bind 0.0.0.0) de ben ngoai co the ket noi vao -->
+  <property>
+    <name>dfs.datanode.address</name>
+    <value>0.0.0.0:9866</value>
+  </property>
+
+  <property>
+    <name>dfs.datanode.http.address</name>
+    <value>0.0.0.0:9864</value>
+  </property>
+
+  <property>
+    <name>dfs.datanode.ipc.address</name>
+    <value>0.0.0.0:9867</value>
+  </property>
+
+</configuration>

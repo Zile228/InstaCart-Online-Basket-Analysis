@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  mapred-site.xml - File cau hinh cho MapReduce
+  Chu yeu dung de phuc vu cho YARN (neu dung Spark thi se khong can MapReduce, nhung YARN van yeu cau thong so nay)
+-->
+<configuration>
+
+  <!-- Chon YARN lam framework thuc thi mac dinh -->
+  <property>
+    <name>mapreduce.framework.name</name>
+    <value>yarn</value>
+  </property>
+
+  <!-- Thong tin ket noi cua Job History Server de theo doi lich su job -->
+  <property>
+    <name>mapreduce.jobhistory.address</name>
+    <value>namenode:10020</value>
+  </property>
+
+  <property>
+    <name>mapreduce.jobhistory.webapp.address</name>
+    <value>namenode:19888</value>
+  </property>
+
+  <!-- Luong tai nguyen (RAM va CPU) muon cap phat cho ApplicationMaster -->
+  <property>
+    <name>yarn.app.mapreduce.am.resource.mb</name>
+    <value>512</value>
+  </property>
+
+  <property>
+    <name>yarn.app.mapreduce.am.resource.cpu-vcores</name>
+    <value>1</value>
+  </property>
+
+  <!-- Gioi han dung luong RAM cho moi task Map va task Reduce -->
+  <property>
+    <name>mapreduce.map.memory.mb</name>
+    <value>512</value>
+  </property>
+
+  <property>
+    <name>mapreduce.reduce.memory.mb</name>
+    <value>512</value>
+  </property>
+
+  <!-- Kich hoat uber mode cho cac job nho de chay truc tiep tren AM, do mat cong khoi tao container moi -->
+  <property>
+    <name>mapreduce.job.ubertask.enable</name>
+    <value>true</value>
+  </property>
+
+</configuration>
