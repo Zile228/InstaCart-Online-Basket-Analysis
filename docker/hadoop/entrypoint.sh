@@ -148,11 +148,14 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
         exit 1
     fi
 
-    export HADOOP_DATANODE_OPTS="${HADOOP_DATANODE_OPTS:-} -Ddfs.datanode.address=${DATANODE_HOST}:9866 -Ddfs.datanode.http.address=${DATANODE_HOST}:9864 -Ddfs.datanode.ipc.address=${DATANODE_HOST}:9867"
+    export HADOOP_DATANODE_OPTS="${HADOOP_DATANODE_OPTS:-} -Ddfs.datanode.address=${DATANODE_HOST}:9866 -Ddfs.datanode.http.address=${DATANODE_HOST}:9864 -Ddfs.datanode.ipc.address=${DATANODE_HOST}:9867 -Ddfs.datanode.hostname=$(hostname)"
     echo "DataNode sẽ advertise IP: ${DATANODE_HOST}"
     echo "  dfs.datanode.address      → ${DATANODE_HOST}:9866"
     echo "  dfs.datanode.http.address → ${DATANODE_HOST}:9864"
     echo "  dfs.datanode.ipc.address  → ${DATANODE_HOST}:9867"
+    echo "  dfs.datanode.hostname     → $(hostname)"
+    echo "  (SỬA: NameNode dùng hostname này để định danh datanode, tránh"
+    echo "   trùng IP khi nhiều máy worker đều bị NAT về cùng 1 IP nội bộ)"
 
     # ── Override YARN NodeManager memory từ env var ────────────────
     # Hadoop không đọc env var để override XML → dùng HADOOP_CONF_DIR trick:

@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  yarn-site.xml - File cau hinh cho trinh quan ly tai nguyen YARN
+-->
 <configuration>
 
+  <!-- Cau hinh shuffle handler ho tro cho MapReduce co the chay tren YARN -->
   <property>
     <name>yarn.nodemanager.aux-services</name>
     <value>mapreduce_shuffle</value>
@@ -12,6 +16,7 @@
     <value>org.apache.hadoop.mapred.ShuffleHandler</value>
   </property>
 
+  <!-- Thong tin dia chi va cac cong giao tiep cua ResourceManager -->
   <property>
     <name>yarn.resourcemanager.hostname</name>
     <value>namenode</value>
@@ -42,7 +47,7 @@
     <value>0.0.0.0:8088</value>
   </property>
 
-  <!-- Giảm xuống 512MB để nhường RAM cho Spark/Kafka/Jupyter -->
+  <!-- Gioi han RAM cap phat xuong con 512MB de danh tai nguyen cho cac dich vu khac nhu Spark, Kafka hay Jupyter -->
   <property>
     <name>yarn.nodemanager.resource.memory-mb</name>
     <value>512</value>
@@ -58,6 +63,7 @@
     <value>128</value>
   </property>
 
+  <!-- So luong loi CPU ao (vcores) toi da ma NodeManager duoc phep su dung -->
   <property>
     <name>yarn.nodemanager.resource.cpu-vcores</name>
     <value>2</value>
@@ -68,6 +74,7 @@
     <value>0.0.0.0:8042</value>
   </property>
 
+  <!-- Tat tinh nang tu dong kiem tra RAM ao va RAM vat ly de tranh viec container bi kill nham trong moi truong Docker -->
   <property>
     <name>yarn.nodemanager.vmem-check-enabled</name>
     <value>false</value>
@@ -78,6 +85,7 @@
     <value>false</value>
   </property>
 
+  <!-- Bat tinh nang tu dong gom (aggregate) log cua cac ung dung de de dang theo doi va gỡ lỗi -->
   <property>
     <name>yarn.log-aggregation-enable</name>
     <value>true</value>

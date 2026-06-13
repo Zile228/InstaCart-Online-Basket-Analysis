@@ -29,8 +29,26 @@ set +a
 # Tự tính SPARK_WORKER_PORT nếu chưa có trong .env
 if [ -z "${SPARK_WORKER_PORT:-}" ]; then
     SPARK_WORKER_PORT="808${WORKER_ID:-1}"
-    export SPARK_WORKER_PORT
 fi
+
+# ── Kiểm tra port có đang bị chiếm trên máy host không ────────
+# Nếu bị chiếm (vd: 8082 luôn in-use) → fallback sang 8083.
+# Dùng bash /dev/tcp (Git Bash, Linux, macOS, WSL2 đều hỗ trợ).
+is_port_in_use() {
+    local port=$1
+    (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && { exec 3>&- 2>/dev/null; exec 3<&- 2>/dev/null; return 0; }
+    return 1
+}
+
+if is_port_in_use "$SPARK_WORKER_PORT"; then
+    FALLBACK_PORT=83
+    echo ""
+    echo "  WARNING: Port $SPARK_WORKER_PORT đang bị chiếm trên máy này."
+    echo "  Fallback sang port $FALLBACK_PORT cho Spark Worker Web UI."
+    SPARK_WORKER_PORT="$FALLBACK_PORT"
+fi
+
+export SPARK_WORKER_PORT
 
 # ── Kiểm tra biến bắt buộc ───────────────────────────────────
 if [ -z "${MASTER_TS_IP:-}" ] || [ "$MASTER_TS_IP" = "100.x.x.x" ]; then

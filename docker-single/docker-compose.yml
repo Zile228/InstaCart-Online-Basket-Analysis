@@ -1,13 +1,11 @@
-# ============================================================
-#  docker-compose.yml — Single-node, lightweight
-#  Spark chạy local[*] trong Jupyter → bỏ spark-master/worker
+# File docker-compose.yml phuc vu moi truong Single-node gon nhe
+# Spark se chay o che do local[*] ngay trong Jupyter nen khong can thiet lap rieng spark-master/worker
 #
-#  Tổng RAM ước tính: ~4 GB
-#    namenode : 900 MB
-#    datanode : 700 MB
-#    kafka    : 400 MB
-#    jupyter  : 2 GB  (chứa luôn Spark executor)
-# ============================================================
+# Uoc luong tong dung luong RAM can thiet: khoang 4 GB
+# - namenode: 900 MB
+# - datanode: 700 MB
+# - kafka: 400 MB
+# - jupyter: 2 GB (bao gom ca vung thuc thi Spark)
 
 networks:
   bigdata-net:
@@ -15,7 +13,7 @@ networks:
 
 services:
 
-  # ── NameNode + YARN ResourceManager ──────────────────────
+  # Thiet lap cho NameNode va YARN ResourceManager
   namenode:
     build:
       context: ./hadoop
@@ -26,9 +24,9 @@ services:
     container_name: namenode
     hostname: namenode
     ports:
-      - "9870:9870"   # NameNode Web UI  → http://localhost:9870
-      - "9000:9000"   # HDFS RPC
-      - "8088:8088"   # YARN RM Web UI   → http://localhost:8088
+      - "9870:9870"   # NameNode Web UI -> http://localhost:9870
+      - "9000:9000"   # Cong giao tiep HDFS RPC
+      - "8088:8088"   # YARN RM Web UI -> http://localhost:8088
       - "8032:8032"
       - "8030:8030"
       - "8031:8031"
@@ -51,16 +49,16 @@ services:
       timeout: 10s
       retries: 5
 
-  # ── DataNode + NodeManager ────────────────────────────────
+  # Thiet lap cho DataNode va NodeManager
   datanode:
     image: instacart-hadoop:3.4.3
     container_name: datanode
     hostname: datanode1
     ports:
-      - "9864:9864"   # DataNode Web UI → http://localhost:9864
+      - "9864:9864"   # DataNode Web UI -> http://localhost:9864
       - "9866:9866"
       - "9867:9867"
-      - "8042:8042"   # NodeManager Web UI → http://localhost:8042
+      - "8042:8042"   # NodeManager Web UI -> http://localhost:8042
     networks:
       - bigdata-net
     environment:
@@ -78,13 +76,13 @@ services:
       namenode:
         condition: service_healthy
 
-  # ── Kafka ─────────────────────────────────────────────────
+  # Thiet lap cho he thong tin nhan message queue Kafka
   kafka:
     image: apache/kafka:4.1.2
     container_name: kafka
     hostname: kafka
     ports:
-      - "9092:9092"   # External access → localhost:9092
+      - "9092:9092"   # Cong ket noi tu ngoai container -> localhost:9092
     networks:
       - bigdata-net
     environment:
@@ -110,10 +108,9 @@ services:
       namenode:
         condition: service_healthy
 
-  # ── Jupyter + Spark local[*] ──────────────────────────────
-  # Không cần spark-master/worker riêng nữa.
-  # Spark chạy ngay trong container này, kết nối HDFS + Kafka bình thường.
-  # Spark UI vẫn có tại http://localhost:4040 khi job đang chạy.
+  # Thiet lap cho Jupyter va Spark chay o che do local[*]
+  # He thong se chay thuc thi Spark truc tiep ben trong container nay de giao tiep truc tiep voi HDFS va Kafka
+  # Bạn co the theo doi giao dien quan ly Spark UI tai dia chi http://localhost:4040 khi co job dang chay
   jupyter:
     build:
       context: ./jupyter
@@ -122,8 +119,8 @@ services:
     container_name: jupyter
     hostname: jupyter
     ports:
-      - "8888:8888"   # Jupyter → http://localhost:8888
-      - "4040:4040"   # Spark App UI → http://localhost:4040
+      - "8888:8888"   # Jupyter Web UI -> http://localhost:8888
+      - "4040:4040"   # Spark App UI -> http://localhost:4040
     networks:
       - bigdata-net
     environment:

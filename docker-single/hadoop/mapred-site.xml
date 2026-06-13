@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <!--
-  mapred-site.xml — MapReduce configuration
-  (Mostly used by YARN; Spark bypasses MapReduce but YARN needs this)
+  mapred-site.xml - File cau hinh cho MapReduce
+  Chu yeu dung de phuc vu cho YARN (neu dung Spark thi se khong can MapReduce, nhung YARN van yeu cau thong so nay)
 -->
 <configuration>
 
-  <!-- Use YARN as the execution framework -->
+  <!-- Chon YARN lam framework thuc thi mac dinh -->
   <property>
     <name>mapreduce.framework.name</name>
     <value>yarn</value>
   </property>
 
-  <!-- Job History Server -->
+  <!-- Thong tin ket noi cua Job History Server de theo doi lich su job -->
   <property>
     <name>mapreduce.jobhistory.address</name>
     <value>namenode:10020</value>
@@ -23,7 +23,7 @@
     <value>namenode:19888</value>
   </property>
 
-  <!-- ApplicationMaster resource request -->
+  <!-- Luong tai nguyen (RAM va CPU) muon cap phat cho ApplicationMaster -->
   <property>
     <name>yarn.app.mapreduce.am.resource.mb</name>
     <value>512</value>
@@ -34,7 +34,7 @@
     <value>1</value>
   </property>
 
-  <!-- Map/Reduce task memory -->
+  <!-- Gioi han dung luong RAM cho moi task Map va task Reduce -->
   <property>
     <name>mapreduce.map.memory.mb</name>
     <value>512</value>
@@ -45,7 +45,7 @@
     <value>512</value>
   </property>
 
-  <!-- Enable uber mode for small jobs (runs in AM, no container overhead) -->
+  <!-- Kich hoat uber mode cho cac job nho de chay truc tiep tren AM, do mat cong khoi tao container moi -->
   <property>
     <name>mapreduce.job.ubertask.enable</name>
     <value>true</value>
