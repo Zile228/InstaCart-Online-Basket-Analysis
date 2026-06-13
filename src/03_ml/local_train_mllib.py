@@ -21,6 +21,11 @@ import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
+try:
+    from tqdm.auto import tqdm
+except ImportError:  # Keep the script runnable on minimal Spark nodes.
+    tqdm = None
+
 from pyspark.ml import Pipeline
 from pyspark.ml.classification import (
     GBTClassifier,
@@ -38,7 +43,7 @@ from pyspark.ml.feature import (
 from pyspark.ml.fpm import FPGrowth
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
-from pyspark.sql.types import DoubleType, IntegerType
+from pyspark.sql.types import DoubleType, IntegerType, StringType, StructField, StructType
 
 
 REQUIRED_FILES = {
@@ -86,6 +91,28 @@ RFV_FEATURES = [
     "u_dairy_ratio",
 ]
 
+PROGRESS_ENABLED = True
+
+
+def progress_iter(items: Iterable, desc: str, total: int | None = None) -> Iterable:
+    if PROGRESS_ENABLED and tqdm is not None:
+        return tqdm(items, desc=desc, total=total, unit="step")
+    return items
+
+
+def make_progress(total: int, desc: str):
+    if PROGRESS_ENABLED and tqdm is not None:
+        return tqdm(total=total, desc=desc, unit="step")
+    return None
+
+
+def update_progress(bar, message: str) -> None:
+    if bar is not None:
+        bar.set_postfix_str(message)
+        bar.update(1)
+    elif PROGRESS_ENABLED:
+        print(f"[progress] {message}", flush=True)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -129,18 +156,66 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Remove output directory before running.",
     )
+    parser.add_argument(
+        "--driver-memory",
+        default=os.environ.get("SPARK_DRIVER_MEMORY", "3g"),
+        help="Spark driver memory. For Colab full-data runs, use 8g-10g.",
+    )
+    parser.add_argument(
+        "--executor-memory",
+        default=None,
+        help="Optional Spark executor memory. Mostly relevant for cluster/master mode.",
+    )
+    parser.add_argument(
+        "--shuffle-partitions",
+        type=int,
+        default=int(os.environ.get("SPARK_SQL_SHUFFLE_PARTITIONS", "16")),
+        help="spark.sql.shuffle.partitions. Use 32-96 for Colab full-data runs.",
+    )
+    parser.add_argument(
+        "--default-parallelism",
+        type=int,
+        default=int(os.environ.get("SPARK_DEFAULT_PARALLELISM", "16")),
+        help="spark.default.parallelism for RDD-backed operations.",
+    )
+    parser.add_argument(
+        "--local-dir",
+        default=os.environ.get("SPARK_LOCAL_DIRS"),
+        help="Directory for Spark local shuffle/temp files, e.g. /content/spark-tmp on Colab.",
+    )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable tqdm progress bars and progress log messages.",
+    )
     return parser.parse_args()
 
 
-def create_spark(master: str) -> SparkSession:
-    spark = (
+def create_spark(
+    master: str,
+    driver_memory: str,
+    executor_memory: str | None,
+    shuffle_partitions: int,
+    default_parallelism: int,
+    local_dir: str | None,
+) -> SparkSession:
+    builder = (
         SparkSession.builder.appName("Instacart-Local-MLlib")
         .master(master)
-        .config("spark.sql.shuffle.partitions", "16")
+        .config("spark.driver.memory", driver_memory)
+        .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
+        .config("spark.default.parallelism", str(default_parallelism))
         .config("spark.sql.adaptive.enabled", "true")
-        .config("spark.driver.memory", "3g")
-        .getOrCreate()
+        .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
+        .config("spark.sql.adaptive.advisoryPartitionSizeInBytes", "64m")
+        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     )
+    if executor_memory:
+        builder = builder.config("spark.executor.memory", executor_memory)
+    if local_dir:
+        builder = builder.config("spark.local.dir", local_dir)
+
+    spark = builder.getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
     return spark
 
@@ -180,12 +255,58 @@ def read_csvs(spark: SparkSession, data_dir: Path, sample_fraction: float, seed:
 
 
 def read_instacart_csv(spark: SparkSession, path: Path) -> DataFrame:
-    return (
+    schemas = {
+        "orders.csv": StructType(
+            [
+                StructField("order_id", IntegerType(), False),
+                StructField("user_id", IntegerType(), False),
+                StructField("eval_set", StringType(), True),
+                StructField("order_number", IntegerType(), True),
+                StructField("order_dow", IntegerType(), True),
+                StructField("order_hour_of_day", IntegerType(), True),
+                StructField("days_since_prior_order", DoubleType(), True),
+            ]
+        ),
+        "order_products__prior.csv": StructType(
+            [
+                StructField("order_id", IntegerType(), False),
+                StructField("product_id", IntegerType(), False),
+                StructField("add_to_cart_order", IntegerType(), True),
+                StructField("reordered", IntegerType(), True),
+            ]
+        ),
+        "order_products__train.csv": StructType(
+            [
+                StructField("order_id", IntegerType(), False),
+                StructField("product_id", IntegerType(), False),
+                StructField("add_to_cart_order", IntegerType(), True),
+                StructField("reordered", IntegerType(), True),
+            ]
+        ),
+        "aisles.csv": StructType(
+            [
+                StructField("aisle_id", IntegerType(), False),
+                StructField("aisle", StringType(), True),
+            ]
+        ),
+        "departments.csv": StructType(
+            [
+                StructField("department_id", IntegerType(), False),
+                StructField("department", StringType(), True),
+            ]
+        ),
+    }
+    schema = schemas.get(path.name)
+    reader = (
         spark.read.option("header", True)
-        .option("inferSchema", True)
         .option("quote", '"')
         .option("escape", "\\")
         .option("multiLine", True)
+    )
+    if schema is not None:
+        reader = reader.schema(schema)
+    return (
+        reader.option("inferSchema", schema is None)
         .csv(str(path))
     )
 
@@ -267,6 +388,7 @@ def build_feature_tables(dfs: Dict[str, DataFrame], feature_dir: Path) -> Dict[s
             F.when(F.lower(F.col("product_name")).contains("organic"), 1).otherwise(0),
         )
     )
+    print("[features] materializing prior_full fact table", flush=True)
     prior_full.cache()
     prior_full.count()
 
@@ -315,6 +437,7 @@ def build_feature_tables(dfs: Dict[str, DataFrame], feature_dir: Path) -> Dict[s
         .join(preferred_hour, "user_id", "left")
         .cache()
     )
+    print("[features] built user_features", flush=True)
 
     product_features = (
         prior_full.groupBy("product_id")
@@ -331,6 +454,7 @@ def build_feature_tables(dfs: Dict[str, DataFrame], feature_dir: Path) -> Dict[s
         .drop("_reorder_sum")
         .cache()
     )
+    print("[features] built product_features", flush=True)
 
     up_base = prior_full.groupBy("user_id", "product_id").agg(
         F.count("*").alias("up_order_count"),
@@ -351,6 +475,7 @@ def build_feature_tables(dfs: Dict[str, DataFrame], feature_dir: Path) -> Dict[s
         .drop("u_total_orders")
         .cache()
     )
+    print("[features] built user_product_features", flush=True)
 
     orders_train = orders.filter(F.col("eval_set") == "train")
     train_positive = (
@@ -367,6 +492,7 @@ def build_feature_tables(dfs: Dict[str, DataFrame], feature_dir: Path) -> Dict[s
         .join(product_features, "product_id", "left")
         .cache()
     )
+    print("[features] built train_dataset", flush=True)
 
     w_last = Window.partitionBy("user_id").orderBy(F.desc("order_number"))
     recency_df = (
@@ -391,10 +517,12 @@ def build_feature_tables(dfs: Dict[str, DataFrame], feature_dir: Path) -> Dict[s
         .fillna({"recency": 0.0})
         .cache()
     )
+    print("[features] built rfv_features", flush=True)
 
     baskets = prior.groupBy("order_id").agg(
         F.sort_array(F.collect_set(F.col("product_id").cast("string"))).alias("items")
     )
+    print("[features] built baskets", flush=True)
 
     feature_dir.mkdir(parents=True, exist_ok=True)
     feature_tables = {
@@ -406,7 +534,7 @@ def build_feature_tables(dfs: Dict[str, DataFrame], feature_dir: Path) -> Dict[s
         "rfv_features": rfv_features,
         "baskets": baskets,
     }
-    for name, df in feature_tables.items():
+    for name, df in progress_iter(feature_tables.items(), "write feature tables", total=len(feature_tables)):
         safe_write(df, feature_dir / name)
 
     return feature_tables
@@ -591,7 +719,9 @@ def train_reorder(
     models_dir = output_dir / "models" / "reorder"
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    for model_name in model_names:
+    model_names = list(model_names)
+    for model_name in progress_iter(model_names, "train reorder models", total=len(model_names)):
+        print(f"[reorder] training {model_name}", flush=True)
         start = time.time()
         pipeline = build_reorder_pipeline(model_name, seed, numerical_features)
         model = pipeline.fit(train_df)
@@ -660,7 +790,9 @@ def train_segmentation(
     best_k = None
     best_predictions = None
 
-    for k in range(max(k_min, 2), max_k + 1):
+    k_values = list(range(max(k_min, 2), max_k + 1))
+    for k in progress_iter(k_values, "search KMeans k", total=len(k_values)):
+        print(f"[segmentation] training KMeans k={k}", flush=True)
         start = time.time()
         km = KMeans(featuresCol="features", predictionCol="cluster", k=k, maxIter=50, seed=seed)
         model = km.fit(scaled)
@@ -726,6 +858,7 @@ def train_basket_rules(
         return report
 
     fp = FPGrowth(itemsCol="items", minSupport=min_support, minConfidence=min_confidence)
+    print("[basket] training FPGrowth", flush=True)
     model = fp.fit(baskets)
 
     freq_itemsets = model.freqItemsets.orderBy(F.desc("freq"))
@@ -804,7 +937,9 @@ def selected_tasks(raw: str) -> List[str]:
 
 
 def main() -> None:
+    global PROGRESS_ENABLED
     args = parse_args()
+    PROGRESS_ENABLED = not args.no_progress
     repo_dir = Path.cwd()
     data_dir = (repo_dir / args.data_dir).resolve()
     output_dir = (repo_dir / args.output_dir).resolve()
@@ -814,17 +949,33 @@ def main() -> None:
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    spark = create_spark(args.master)
+    spark = create_spark(
+        args.master,
+        args.driver_memory,
+        args.executor_memory,
+        args.shuffle_partitions,
+        args.default_parallelism,
+        args.local_dir,
+    )
     print(f"Spark version: {spark.version}")
     print(f"Data dir     : {data_dir}")
     print(f"Output dir   : {output_dir}")
+    print(f"Master       : {args.master}")
+    print(f"Driver memory: {args.driver_memory}")
+    print(f"Shuffle parts: {args.shuffle_partitions}")
+    print(f"Default par. : {spark.sparkContext.defaultParallelism}")
+    if args.local_dir:
+        print(f"Spark local  : {args.local_dir}")
 
+    tasks = selected_tasks(args.tasks)
+    pipeline_progress = make_progress(2 + len(tasks), "MLlib pipeline")
     try:
         dfs = read_csvs(spark, data_dir, args.sample_fraction, args.seed)
+        update_progress(pipeline_progress, "loaded CSV files")
         features = build_feature_tables(dfs, feature_dir)
+        update_progress(pipeline_progress, "built feature tables")
 
         summaries = {}
-        tasks = selected_tasks(args.tasks)
         model_names = [name.strip().lower() for name in args.models.split(",") if name.strip()]
         feature_config = load_feature_config(args.feature_config)
         reorder_numeric_features = feature_config.get("reorder_numeric_features", NUMERIC_REORDER_FEATURES)
@@ -838,6 +989,7 @@ def main() -> None:
                 args.seed,
                 reorder_numeric_features,
             )
+            update_progress(pipeline_progress, "finished reorder")
         if "segmentation" in tasks:
             summaries["segmentation"] = train_segmentation(
                 features["rfv_features"],
@@ -847,6 +999,7 @@ def main() -> None:
                 args.seed,
                 segmentation_features,
             )
+            update_progress(pipeline_progress, "finished segmentation")
         if "basket" in tasks:
             summaries["basket"] = train_basket_rules(
                 features["baskets"],
@@ -855,10 +1008,13 @@ def main() -> None:
                 args.min_support,
                 args.min_confidence,
             )
+            update_progress(pipeline_progress, "finished basket")
 
         write_json(summaries, output_dir / "reports" / "summary.json")
         print(json.dumps(summaries, indent=2, sort_keys=True))
     finally:
+        if "pipeline_progress" in locals() and pipeline_progress is not None:
+            pipeline_progress.close()
         spark.stop()
 
 
