@@ -4,7 +4,7 @@
 #  Stack: Hadoop DataNode + YARN NodeManager + Spark Worker
 #
 #  Khởi động:
-#    ./scripts/start-worker.sh
+#    ./script/start-worker.sh
 #
 #  Yêu cầu trong .env:
 #    MASTER_TS_IP   — Tailscale IP của máy master
