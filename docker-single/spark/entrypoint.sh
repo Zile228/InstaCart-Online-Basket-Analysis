@@ -1,29 +1,17 @@
 #!/bin/bash
-# ============================================================
-#  Spark Entrypoint — detects SPARK_MODE and starts service
-#  SPARK_MODE=master → start Spark Master
-#  SPARK_MODE=worker → start Spark Worker (kết nối đến master)
-#
-#  Multi-machine update:
-#    - Worker có thể chạy trên máy khác qua Tailscale
-#    - SPARK_MASTER_URL chứa Tailscale IP (truyền qua env var)
-#    - wait_for_service dùng MASTER_HOST đã resolve qua extra_hosts
-#      (không hard-code "spark-master" hostname cho worker)
-#
-#  GIỮ NGUYÊN từ config cũ (đã debug kỹ):
-#    - nc -z thay /dev/tcp (reliable hơn trên một số Docker kernel)
-# ============================================================
+# Entrypoint khoi chay Spark - tu dong phat hien SPARK_MODE de bat Master hoac Worker
+# - SPARK_MODE=master: Khoi dong Spark Master
+# - SPARK_MODE=worker: Khoi dong Spark Worker va ket noi den Master
 
 set -e
 
 SPARK_MODE="${SPARK_MODE:-master}"
 
-echo "======================================================"
-echo "  Spark ${SPARK_VERSION:-4.1.1} — starting as: ${SPARK_MODE}"
-echo "======================================================"
+echo "------------------------------------------------"
+echo "  Spark ${SPARK_VERSION:-4.1.1} - bat dau chay voi vai tro: ${SPARK_MODE}"
+echo "------------------------------------------------"
 
-# ── Wait function (dùng nc -z, không dùng /dev/tcp) ──────────
-# nc -z reliable hơn /dev/tcp trên các Docker image minimal
+# Ham kiem tra va cho dung port dich vu hoat dong truoc khi ket noi
 wait_for_service() {
     local HOST=$1
     local PORT=$2
@@ -31,51 +19,51 @@ wait_for_service() {
     local WAIT_SECS=${4:-3}
     local count=0
 
-    echo "Waiting for ${HOST}:${PORT} ..."
+    echo "Dang cho ket noi den ${HOST}:${PORT} ..."
     while ! nc -z "${HOST}" "${PORT}" 2>/dev/null; do
         count=$((count + 1))
         if [ "${count}" -ge "${MAX_TRIES}" ]; then
-            echo "  WARNING: Timeout waiting for ${HOST}:${PORT} after $((MAX_TRIES * WAIT_SECS))s, starting anyway..."
+            echo "  CANH BAO: Da qua thoi gian cho ket noi ${HOST}:${PORT} sau $((MAX_TRIES * WAIT_SECS))s, van tiep tuc khoi chay..."
             break
         fi
-        echo "  [${count}/${MAX_TRIES}] retrying in ${WAIT_SECS}s..."
+        echo "  [${count}/${MAX_TRIES}] Chua san sang, se thu lai sau ${WAIT_SECS}s..."
         sleep "${WAIT_SECS}"
     done
-    echo "  ${HOST}:${PORT} is up (or timeout — proceeding anyway)!"
+    echo "  ${HOST}:${PORT} da san sang (hoac ket thuc thoi gian cho - tiep tuc xu ly)!"
 }
 
-# ── Spark Master ─────────────────────────────────────────────
+# Chay o che do Master
 if [ "${SPARK_MODE}" = "master" ]; then
 
-    echo "Starting Spark Master on ${SPARK_MASTER_HOST:-spark-master}:${SPARK_MASTER_PORT:-7077}"
+    echo "Dang khoi dong Spark Master tren ${SPARK_MASTER_HOST:-spark-master}:${SPARK_MASTER_PORT:-7077}"
     exec ${SPARK_HOME}/bin/spark-class org.apache.spark.deploy.master.Master \
         --host "${SPARK_MASTER_HOST:-spark-master}" \
         --port "${SPARK_MASTER_PORT:-7077}" \
         --webui-port "${SPARK_MASTER_WEBUI_PORT:-8080}"
 
-# ── Spark Worker ─────────────────────────────────────────────
+# Chay o che do Worker
 elif [ "${SPARK_MODE}" = "worker" ]; then
 
     MASTER_URL="${SPARK_MASTER_URL:-spark://spark-master:7077}"
 
-    # Trích xuất host từ MASTER_URL để wait_for_service
-    # MASTER_URL format: spark://HOST:PORT
+    # Cat lay chuoi Host va Port tu MASTER_URL de dung lam tham so cho ham wait_for_service
+    # Format mac dinh cua MASTER_URL co dang: spark://HOST:PORT
     MASTER_HOST=$(echo "$MASTER_URL" | sed 's|spark://||' | cut -d: -f1)
     MASTER_PORT=$(echo "$MASTER_URL" | sed 's|spark://||' | cut -d: -f2)
 
     echo "Spark Master URL: ${MASTER_URL}"
-    echo "Waiting for Master at ${MASTER_HOST}:${MASTER_PORT}..."
+    echo "Dang cho ket noi den Master tai ${MASTER_HOST}:${MASTER_PORT}..."
 
     wait_for_service "${MASTER_HOST}" "${MASTER_PORT}" 40 5
 
-    echo "Starting Spark Worker → ${MASTER_URL}"
+    echo "Dang khoi dong Spark Worker va ket noi den: ${MASTER_URL}"
     exec ${SPARK_HOME}/bin/spark-class org.apache.spark.deploy.worker.Worker \
         --webui-port "${SPARK_WORKER_WEBUI_PORT:-8081}" \
         --memory "${SPARK_WORKER_MEMORY:-2G}" \
         --cores "${SPARK_WORKER_CORES:-2}" \
         "${MASTER_URL}"
 
-# ── Passthrough (spark-submit, spark-shell, v.v.) ─────────────
+# Truong hop truyen vao cac lenh dac biet khac (nhu spark-submit, spark-shell, v.v.)
 else
     exec "$@"
 fi

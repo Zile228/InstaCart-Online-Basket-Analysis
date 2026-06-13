@@ -1,17 +1,10 @@
-# ============================================================
-#  Spark 4.1.1 — Custom Image
-#  PATCH 1 & 6: Spark 4.1.1 + Scala 2.13 + Java 17
-#  Base: eclipse-temurin:17-jdk-jammy (JDK 17 required for Spark 4.x)
-#  Roles: spark-master OR spark-worker (via SPARK_MODE env var)
-#
-#  BUG FIX (v2): Added netcat-openbsd — entrypoint.sh dùng
-#    nc -z để wait cho master, thay cho /dev/tcp (bash built-in
-#    không reliable trên mọi kernel config trong Docker)
-# ============================================================
+# Spark 4.1.1 - Image dung chung cho ca Master va Worker
+# Base image: eclipse-temurin:17-jdk-jammy (Spark 4.x bat buoc phai dung JDK 17)
+# Vai tro cua tung container duoc quyet dinh qua bien moi truong SPARK_MODE (spark-master hoac spark-worker)
 
 FROM eclipse-temurin:17-jdk-jammy
 
-# ── Environment ──────────────────────────────────────────────
+# Thiet lap cac bien moi truong can thiet cho Java, Python va Spark
 ENV SPARK_VERSION=4.1.1
 ENV SPARK_HOME=/opt/spark
 ENV JAVA_HOME=/opt/java/openjdk
@@ -19,8 +12,7 @@ ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
 ENV PYSPARK_PYTHON=python3
 ENV PYSPARK_DRIVER_PYTHON=python3
 
-# ── System packages ──────────────────────────────────────────
-# BUG FIX: thêm netcat-openbsd (cần cho `nc -z` trong entrypoint)
+# Cai dat cac package he thong va cong cu dong lenh co ban
 RUN apt-get update && apt-get install -y \
     wget \
     python3 \
@@ -29,8 +21,7 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Python packages ──────────────────────────────────────────
-#  PATCH 1: pyspark==4.1.1 (not 3.5.1)
+# Cai dat PySpark va cac thu vien Python phuc vu phan tich du lieu
 RUN pip3 install --no-cache-dir \
     pyspark==4.1.1 \
     pandas==2.2.2 \
@@ -40,27 +31,26 @@ RUN pip3 install --no-cache-dir \
     confluent-kafka==2.5.0 \
     python-dotenv==1.0.1
 
-# ── Download and install Spark 4.1.1 ─────────────────────────
-#  Built for Hadoop 3, Scala 2.13 (PATCH 1)
+# Tai va giai nen phien ban Spark 4.1.1 (phien ban build cho Hadoop 3 va Scala 2.13)
 RUN wget --progress=bar:force:noscroll \
     https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz \
     && tar -xzf spark-${SPARK_VERSION}-bin-hadoop3.tgz -C /opt/ \
     && mv /opt/spark-${SPARK_VERSION}-bin-hadoop3 ${SPARK_HOME} \
     && rm spark-${SPARK_VERSION}-bin-hadoop3.tgz
 
-# ── Spark config and entrypoint ───────────────────────────────
+# Copy file cau hinh mac dinh va set quyen cho file entrypoint khoi dong
 COPY spark-defaults.conf ${SPARK_HOME}/conf/spark-defaults.conf
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# ── Work directory ─────────────────────────────────────────
+# Thiet lap thu muc lam viec mac dinh
 RUN mkdir -p /opt/spark/work-dir
 WORKDIR /opt/spark/work-dir
 
-# ── Exposed ports ─────────────────────────────────────────────
-#  Master: 8080 (Web UI), 7077 (RPC)
-#  Worker: 8081 (Web UI)
-#  Application: 4040 (Spark UI)
+# Mo cac port ket noi va quan ly:
+# - Master: 8080 (Web UI), 7077 (RPC)
+# - Worker: 8081 (Web UI)
+# - Application: 4040 (Spark UI)
 EXPOSE 8080 7077 8081 4040
 
 ENTRYPOINT ["/entrypoint.sh"]
