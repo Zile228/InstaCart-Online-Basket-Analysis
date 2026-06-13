@@ -60,12 +60,46 @@ RAW = f"{HDFS}/instacart/raw"
 FEAT = f"{HDFS}/instacart/features"
 MODEL = f"{HDFS}/instacart/models"
 
-prior = spark.read.csv(
-    f"{RAW}/order_products__prior.csv", header=True, inferSchema=True
-)
-products = spark.read.csv(
-    f"{RAW}/products.csv", header=True, inferSchema=True
-)
+def read_instacart_csv(path):
+    return (
+        spark.read.option("header", True)
+        .option("inferSchema", True)
+        .option("quote", '"')
+        .option("escape", "\\")
+        .option("multiLine", True)
+        .csv(path)
+    )
+
+
+def read_products_csv(path):
+    import csv
+    from io import StringIO
+    from pyspark.sql.types import IntegerType, StringType, StructField, StructType
+
+    text = "\n".join(spark.sparkContext.textFile(path).collect())
+    reader = csv.DictReader(StringIO(text))
+    rows = [
+        (
+            int(row["product_id"]),
+            row["product_name"],
+            int(row["aisle_id"]),
+            int(row["department_id"]),
+        )
+        for row in reader
+    ]
+    schema = StructType(
+        [
+            StructField("product_id", IntegerType(), False),
+            StructField("product_name", StringType(), True),
+            StructField("aisle_id", IntegerType(), True),
+            StructField("department_id", IntegerType(), True),
+        ]
+    )
+    return spark.createDataFrame(rows, schema)
+
+
+prior = read_instacart_csv(f"{RAW}/order_products__prior.csv")
+products = read_products_csv(f"{RAW}/products.csv")
 
 print(f"prior rows    : {prior.count():,}")
 print(f"products rows : {products.count():,}")
