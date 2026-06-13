@@ -82,6 +82,32 @@
     </description>
   </property>
 
+  <!--
+    FIX: DataNode advertise IP tường minh.
+    Các property dưới đây dùng placeholder DATANODE_HOST_PLACEHOLDER.
+    entrypoint.sh sẽ sed placeholder này thành giá trị $DATANODE_HOST lúc runtime
+    (trước khi khởi động DataNode) để DataNode báo đúng Tailscale IP cho NameNode.
+    Nếu DATANODE_HOST không được set → entrypoint thoát lỗi sớm, tránh DataNode
+    register sai IP (như 151.101.64.223 của Fastly CDN).
+  -->
+  <property>
+    <name>dfs.datanode.address</name>
+    <value>DATANODE_HOST_PLACEHOLDER:9866</value>
+    <description>Địa chỉ IP:port DataNode dùng để transfer data block.</description>
+  </property>
+
+  <property>
+    <name>dfs.datanode.http.address</name>
+    <value>DATANODE_HOST_PLACEHOLDER:9864</value>
+    <description>Địa chỉ IP:port DataNode Web UI.</description>
+  </property>
+
+  <property>
+    <name>dfs.datanode.ipc.address</name>
+    <value>DATANODE_HOST_PLACEHOLDER:9867</value>
+    <description>Địa chỉ IP:port DataNode IPC.</description>
+  </property>
+
   <property>
     <name>dfs.datanode.socket.write.timeout</name>
     <value>120000</value>

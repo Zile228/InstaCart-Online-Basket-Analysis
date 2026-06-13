@@ -9,6 +9,7 @@
 #  Yêu cầu trong .env:
 #    MASTER_TS_IP   — Tailscale IP của máy master
 #    WORKER_ID      — 1 cho worker-1, 2 cho worker-2
+#    WORKER_TS_IP   — Tailscale IP của CHÍNH MÁY WORKER này (dùng: tailscale ip -4)
 #    WORKER_MEM     — RAM cấp cho mỗi container (vd: 4G)
 #    WORKER_CORES   — Số core cho Spark Worker (vd: 2)
 #    YARN_MEM_MB    — RAM cho YARN NodeManager tính bằng MB (vd: 3072)
@@ -67,13 +68,18 @@ services:
       # Ghi đè cấu hình memory YARN theo .env (tuỳ RAM máy worker)
       # entrypoint.sh đọc biến này và override yarn-site.xml qua HADOOP_CONF_DIR
       YARN_NODEMANAGER_RESOURCE_MEMORY_MB: "${YARN_MEM_MB:-3072}"
-      # HDFS_DATANODE_OPTS đã xoá: "-Ddfs.datanode.hostname=..." không có tác dụng vì
-      # dfs.datanode.hostname là Hadoop config property, không phải JVM system property.
-      # Đã set dfs.datanode.use.datanode.hostname=false trong hdfs-site.xml → DataNode tự dùng IP.
+      # FIX: Tailscale IP của máy worker này — DataNode sẽ advertise IP này cho NameNode.
+      # Thiếu biến này → DataNode tự detect và lấy nhầm IP public (vd: Fastly CDN).
+      # Lấy IP: tailscale ip -4 (trên máy worker), điền vào WORKER_TS_IP trong .env.
+      # worker-1 dùng WORKER1_TS_IP, worker-2 dùng WORKER2_TS_IP.
+      DATANODE_HOST: "${WORKER_TS_IP}"
     volumes:
       - hadoop_datanode:/hadoop/dfs/data
+      # FIX: Đã XOÁ mount hdfs-site.xml từ host vào container.
+      # Mount đó ghi đè file trong image (đã được sed inject DFS_REPLICATION đúng lúc build),
+      # khiến DataNode luôn đọc <value>1</value> từ host thay vì giá trị build arg.
+      # Config được inject đúng lúc runtime qua HADOOP_CONF_DIR trong entrypoint.sh.
       - ./hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
-      - ./hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
       - ./hadoop/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml:ro
       - ./hadoop/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml:ro
     mem_limit: ${WORKER_MEM:-4G}

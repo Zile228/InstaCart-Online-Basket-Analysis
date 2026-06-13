@@ -45,7 +45,10 @@ RUN wget --progress=bar:force:noscroll \
 ARG DFS_REPLICATION=1
 COPY core-site.xml     ${HADOOP_HOME}/etc/hadoop/core-site.xml
 COPY hdfs-site.xml     ${HADOOP_HOME}/etc/hadoop/hdfs-site.xml
-RUN sed -i "s|<value>1</value>|<value>${DFS_REPLICATION}</value>|" \
+# Chỉ thay value trong đúng block dfs.replication, không đụng các property khác
+# dùng address-range: từ dòng chứa dfs.replication đến </property> gần nhất,
+# trong đó tìm <value>N</value> và thay bằng DFS_REPLICATION.
+RUN sed -i "/<name>dfs.replication<\/name>/{n; s|<value>[0-9]*</value>|<value>${DFS_REPLICATION}</value>|}" \
     ${HADOOP_HOME}/etc/hadoop/hdfs-site.xml
 COPY yarn-site.xml     ${HADOOP_HOME}/etc/hadoop/yarn-site.xml
 COPY mapred-site.xml   ${HADOOP_HOME}/etc/hadoop/mapred-site.xml

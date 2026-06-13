@@ -1,17 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <!--
-  core-site.xml — Hadoop core configuration
-  Multi-machine: fs.defaultFS vẫn dùng "namenode" hostname.
-  Worker machines resolve "namenode" → MASTER_TS_IP qua extra_hosts trong docker-compose.worker.yml
-  Master machine: "namenode" resolve trong Docker bridge network như bình thường.
+  core-site.xml - Hadoop core configuration
 -->
 <configuration>
 
   <property>
     <name>fs.defaultFS</name>
     <value>hdfs://namenode:9000</value>
-    <description>NameNode URI. Worker machines resolve "namenode" via extra_hosts → MASTER_TS_IP.</description>
+    <description>NameNode URI. Worker machines resolve "namenode" via extra_hosts MASTER_TS_IP.</description>
   </property>
 
   <property>

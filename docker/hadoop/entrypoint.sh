@@ -132,20 +132,41 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
 
     mkdir -p "${DATANODE_DIR}" /hadoop/tmp "${HADOOP_HOME}/logs"
 
+    # ── FIX: Inject Tailscale IP vào dfs.datanode.address ─────────
+    # DataNode không tự detect được IP đúng trên máy worker: routing phức tạp
+    # khiến nó detect nhầm IP public (vd: 151.101.64.223 của Fastly CDN).
+    # Giải pháp: set tường minh qua DATANODE_HOST (= Tailscale IP của worker).
+    # entrypoint sed placeholder DATANODE_HOST_PLACEHOLDER trong hdfs-site.xml
+    # thành IP thực trước khi DataNode start.
+    # Luôn làm trước YARN override để HADOOP_CONF_DIR được set đúng thứ tự.
+    if [ -z "${DATANODE_HOST:-}" ]; then
+        echo "ERROR: Biến DATANODE_HOST chưa được set."
+        echo "  Thêm DATANODE_HOST=<WORKER_TAILSCALE_IP> vào environment"
+        echo "  của service datanode trong docker-compose.worker.yml."
+        echo "  Lấy IP: tailscale ip -4  (trên máy worker)"
+        exit 1
+    fi
+
+    echo "Injecting DATANODE_HOST=${DATANODE_HOST} vào hdfs-site.xml..."
+    mkdir -p /hadoop/conf-override
+    cp -r "${HADOOP_HOME}/etc/hadoop/." /hadoop/conf-override/
+    sed -i "s|DATANODE_HOST_PLACEHOLDER|${DATANODE_HOST}|g" /hadoop/conf-override/hdfs-site.xml
+    export HADOOP_CONF_DIR=/hadoop/conf-override
+    echo "  dfs.datanode.address      → ${DATANODE_HOST}:9866"
+    echo "  dfs.datanode.http.address → ${DATANODE_HOST}:9864"
+    echo "  dfs.datanode.ipc.address  → ${DATANODE_HOST}:9867"
+    echo "  HADOOP_CONF_DIR=${HADOOP_CONF_DIR}"
+
     # ── Override YARN NodeManager memory từ env var ────────────────
-    # Hadoop không đọc env var để override XML → dùng HADOOP_CONF_DIR trick:
-    # copy toàn bộ config ra thư mục riêng, sed giá trị, rồi trỏ Hadoop vào đó.
-    # Cách này không đụng file :ro được mount từ host.
+    # HADOOP_CONF_DIR đã được set ở trên → sed trực tiếp vào conf-override.
+    # Không cần copy lại lần nữa.
     if [ -n "${YARN_NODEMANAGER_RESOURCE_MEMORY_MB:-}" ]; then
         echo "Overriding YARN NM memory → ${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}MB"
-        mkdir -p /hadoop/conf-override
-        cp -r "${HADOOP_HOME}/etc/hadoop/." /hadoop/conf-override/
         sed -i "/<name>yarn.nodemanager.resource.memory-mb<\/name>/{n; s|<value>[0-9]*</value>|<value>${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}</value>|}" \
             /hadoop/conf-override/yarn-site.xml
         sed -i "/<name>yarn.scheduler.maximum-allocation-mb<\/name>/{n; s|<value>[0-9]*</value>|<value>${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}</value>|}" \
             /hadoop/conf-override/yarn-site.xml
-        export HADOOP_CONF_DIR=/hadoop/conf-override
-        echo "  HADOOP_CONF_DIR=${HADOOP_CONF_DIR}"
+        echo "  YARN NM memory overridden → ${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}MB"
     fi
 
     # Ưu tiên dùng SERVICE_PRECONDITION (format: "HOST:PORT") để wait
