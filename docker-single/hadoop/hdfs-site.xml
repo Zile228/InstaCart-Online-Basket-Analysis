@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <!--
-  hdfs-site.xml — HDFS configuration (single-node)
-  DataNode chạy cùng máy với NameNode → bind 0.0.0.0, không cần advertise IP
+  hdfs-site.xml - File cau hinh cho HDFS (single-node)
+  Thiet lap cac thong so de NameNode va DataNode de dang ket noi va giao tiep trong Docker
 -->
 <configuration>
 
@@ -24,7 +24,7 @@
   <property>
     <name>dfs.blocksize</name>
     <value>134217728</value>
-    <description>128 MB block size</description>
+    <description>Thiet lap kich thuoc block mac dinh la 128 MB</description>
   </property>
 
   <property>
@@ -53,7 +53,7 @@
   </property>
 
   <!--
-    Single-node: dùng hostname thay IP — Docker bridge tự resolve
+    Bat tinh nang nhan dien qua hostname de tan dung co che tu phan giai ten mien cua Docker bridge network
   -->
   <property>
     <name>dfs.namenode.use.datanode.hostname</name>
@@ -70,7 +70,7 @@
     <value>true</value>
   </property>
 
-  <!-- DataNode bind tất cả interfaces trong container -->
+  <!-- Thiet lap cho DataNode lang nghe tren tat ca card mang (bind 0.0.0.0) de ben ngoai co the ket noi vao -->
   <property>
     <name>dfs.datanode.address</name>
     <value>0.0.0.0:9866</value>
