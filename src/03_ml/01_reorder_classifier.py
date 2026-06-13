@@ -446,12 +446,46 @@ top_preds = pred_slim \
     .drop("rank")
 
 # Join product names for readability
-products = spark.read.csv(
-    f"{HDFS}/instacart/raw/products.csv", header=True, inferSchema=True
-)
-departments = spark.read.csv(
-    f"{HDFS}/instacart/raw/departments.csv", header=True, inferSchema=True
-)
+def read_instacart_csv(path):
+    return (
+        spark.read.option("header", True)
+        .option("inferSchema", True)
+        .option("quote", '"')
+        .option("escape", "\\")
+        .option("multiLine", True)
+        .csv(path)
+    )
+
+
+def read_products_csv(path):
+    import csv
+    from io import StringIO
+    from pyspark.sql.types import IntegerType, StringType, StructField, StructType
+
+    text = "\n".join(spark.sparkContext.textFile(path).collect())
+    reader = csv.DictReader(StringIO(text))
+    rows = [
+        (
+            int(row["product_id"]),
+            row["product_name"],
+            int(row["aisle_id"]),
+            int(row["department_id"]),
+        )
+        for row in reader
+    ]
+    schema = StructType(
+        [
+            StructField("product_id", IntegerType(), False),
+            StructField("product_name", StringType(), True),
+            StructField("aisle_id", IntegerType(), True),
+            StructField("department_id", IntegerType(), True),
+        ]
+    )
+    return spark.createDataFrame(rows, schema)
+
+
+products = read_products_csv(f"{HDFS}/instacart/raw/products.csv")
+departments = read_instacart_csv(f"{HDFS}/instacart/raw/departments.csv")
 products_full = products.join(departments, "department_id")
 
 top_preds_named = top_preds.join(

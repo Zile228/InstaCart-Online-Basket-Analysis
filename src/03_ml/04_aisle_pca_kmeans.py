@@ -61,12 +61,48 @@ RAW = f"{HDFS}/instacart/raw"
 FEAT = f"{HDFS}/instacart/features"
 MODEL = f"{HDFS}/instacart/models"
 
-orders = spark.read.csv(f"{RAW}/orders.csv", header=True, inferSchema=True)
-prior = spark.read.csv(
-    f"{RAW}/order_products__prior.csv", header=True, inferSchema=True
-)
-products = spark.read.csv(f"{RAW}/products.csv", header=True, inferSchema=True)
-aisles = spark.read.csv(f"{RAW}/aisles.csv", header=True, inferSchema=True)
+def read_instacart_csv(path):
+    return (
+        spark.read.option("header", True)
+        .option("inferSchema", True)
+        .option("quote", '"')
+        .option("escape", "\\")
+        .option("multiLine", True)
+        .csv(path)
+    )
+
+
+def read_products_csv(path):
+    import csv
+    from io import StringIO
+    from pyspark.sql.types import IntegerType, StringType, StructField, StructType
+
+    text = "\n".join(spark.sparkContext.textFile(path).collect())
+    reader = csv.DictReader(StringIO(text))
+    rows = [
+        (
+            int(row["product_id"]),
+            row["product_name"],
+            int(row["aisle_id"]),
+            int(row["department_id"]),
+        )
+        for row in reader
+    ]
+    schema = StructType(
+        [
+            StructField("product_id", IntegerType(), False),
+            StructField("product_name", StringType(), True),
+            StructField("aisle_id", IntegerType(), True),
+            StructField("department_id", IntegerType(), True),
+        ]
+    )
+    return spark.createDataFrame(rows, schema)
+
+
+orders = read_instacart_csv(f"{RAW}/orders.csv")
+prior = read_instacart_csv(f"{RAW}/order_products__prior.csv")
+products = read_products_csv(f"{RAW}/products.csv")
+aisles = read_instacart_csv(f"{RAW}/aisles.csv")
 
 orders_prior = orders.filter(F.col("eval_set") == "prior").select(
     "order_id", "user_id"
