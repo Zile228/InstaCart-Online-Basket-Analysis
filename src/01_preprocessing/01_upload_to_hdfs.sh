@@ -4,19 +4,16 @@
 #  Upload Instacart CSV files vào HDFS
 #
 #  Cách chạy:
-#    docker exec namenode bash /home/jovyan/work/01_preprocessing/01_upload_to_hdfs.sh
-#
-#  Hoặc nếu data trong /tmp/:
-#    docker exec namenode bash /path/to/script.sh
+#    docker exec namenode bash /home/nhom05/work/01_preprocessing/01_upload_to_hdfs.sh
 #
 #  Biến môi trường:
-#    DATA_DIR  — thư mục chứa CSV (mặc định: /tmp)
+#    DATA_DIR  — thư mục chứa CSV (mặc định: /home/nhom05/data)
 #    HDFS_DIR  — đích trên HDFS  (mặc định: /instacart/raw)
 # ============================================================
 
 set -e
 
-DATA_DIR="${DATA_DIR:-/tmp}"
+DATA_DIR="${DATA_DIR:-/home/nhom05/data}"
 HDFS_DIR="${HDFS_DIR:-/instacart/raw}"
 
 # Color codes
@@ -84,10 +81,8 @@ echo ""
 # Exit early if uploads failed
 if [ "${UPLOAD_FAIL}" -gt 0 ]; then
     echo -e "${RED}WARNING: Some files failed to upload!"
-    echo "  Copy missing files into the namenode container first:"
-    echo "    docker cp data/orders.csv namenode:/tmp/"
-    echo "    docker cp data/order_products__prior.csv namenode:/tmp/"
-    echo "    ... (repeat for all 6 files)"
+    echo "  Kiểm tra lại folder data/ trên host đã có đủ 6 file CSV chưa."
+    echo "  Volume mount: ../data → /home/nhom05/data (trong namenode)"
     echo -e "${NC}"
 fi
 

@@ -82,6 +82,13 @@
     </description>
   </property>
 
+  <!--
+    NOTE: dfs.datanode.address / dfs.datanode.http.address / dfs.datanode.ipc.address
+    KHÔNG đặt ở đây vì NameNode cũng đọc hdfs-site.xml và sẽ crash nếu thấy
+    giá trị không hợp lệ. Địa chỉ DataNode được inject qua HADOOP_DATANODE_OPTS
+    trong entrypoint.sh (chỉ DataNode process đọc, NameNode không bị ảnh hưởng).
+  -->
+
   <property>
     <name>dfs.datanode.socket.write.timeout</name>
     <value>120000</value>
