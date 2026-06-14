@@ -133,6 +133,8 @@ services:
       - "spark-master:${MASTER_TS_IP}"
       # Resolve "namenode" để Spark executor đọc/ghi HDFS trực tiếp
       - "namenode:${MASTER_TS_IP}"
+      - "datanode1:${WORKER1_TS_IP}"    # ← THÊM vào đây
+      - "datanode2:${WORKER2_TS_IP}"    # ← THÊM vào đây
     environment:
       SPARK_MODE: worker
       # Kết nối Spark Master qua Tailscale IP (fallback hostname cũng được nhờ extra_hosts)
