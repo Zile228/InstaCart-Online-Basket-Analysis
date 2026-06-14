@@ -141,6 +141,9 @@ services:
     hostname: jupyter
     ports:
       - "8888:8888"   # Jupyter UI → http://MASTER_TS_IP:8888
+      - "4041:4041"   # spark.driver.port — executor remote connect về đây
+      - "4042:4042"   # spark.blockManager.port
+      - "4043:4040"
     networks:
       - bigdata-net
     # SỬA: Cho phép Jupyter resolve DataNode hostname trên worker machines
@@ -150,6 +153,7 @@ services:
     environment:
       # SỬA: Spark Master URL dùng Tailscale IP để Jupyter submit job đúng
       SPARK_MASTER: spark://${MASTER_TS_IP}:7077
+      MASTER_TS_IP: ${MASTER_TS_IP} 
       HDFS_NAMENODE: hdfs://namenode:9000
       PYSPARK_PYTHON: python3
     volumes:
