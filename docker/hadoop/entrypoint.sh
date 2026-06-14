@@ -157,26 +157,12 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
         exit 1
     fi
 
-<<<<<<< HEAD
-    # ── Override datanode address/hostname qua HADOOP_CONF_DIR (XML) ──
-    # SỬA: -Ddfs.datanode.address qua HADOOP_DATANODE_OPTS có hiệu lực
-    # (Hadoop có cơ chế riêng đọc property này từ system property trong code
-    # DataNode.java), NHƯNG -Ddfs.datanode.hostname KHÔNG có cơ chế tương tự
-    # → bị bỏ qua hoàn toàn → DataNode tự lấy IP từ socket connection (NAT'd
-    # 192.168.65.1) làm registration hostname → 2 worker trùng nhau → loop
-    # DNA_REGISTER vô hạn (mỗi bên ghi đè bên kia mỗi ~3s).
-    #
-    # Fix: thêm dfs.datanode.address VÀ dfs.datanode.hostname vào file XML
-    # thật (qua HADOOP_CONF_DIR override), để Configuration object có giá trị
-    # đúng ngay từ đầu — không phụ thuộc system property.
-=======
     WID="${WORKER_ID:-1}"
     PORT_OFFSET=$(( (WID - 1) * 10 ))
     DN_XFER_PORT="${DN_XFER_PORT:-$((9866 + PORT_OFFSET))}"
     DN_HTTP_PORT="${DN_HTTP_PORT:-$((9864 + PORT_OFFSET))}"
     DN_IPC_PORT="${DN_IPC_PORT:-$((9867 + PORT_OFFSET))}"
 
->>>>>>> 56c15afbd835e5fd3a6caf8167dc4bf894023c5b
     mkdir -p /hadoop/conf-override
     cp -r "${HADOOP_HOME}/etc/hadoop/." /hadoop/conf-override/
 
@@ -185,15 +171,9 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
     # Thêm/ghi đè dfs.datanode.hostname + dfs.datanode.address/http/ipc vào hdfs-site.xml override
     for ENTRY in \
         "dfs.datanode.hostname|${DN_HOSTNAME}" \
-<<<<<<< HEAD
-        "dfs.datanode.address|${DATANODE_HOST}:9866" \
-        "dfs.datanode.http.address|${DATANODE_HOST}:9864" \
-        "dfs.datanode.ipc.address|${DATANODE_HOST}:9867"
-=======
         "dfs.datanode.address|${DATANODE_HOST}:${DN_XFER_PORT}" \
         "dfs.datanode.http.address|${DATANODE_HOST}:${DN_HTTP_PORT}" \
         "dfs.datanode.ipc.address|${DATANODE_HOST}:${DN_IPC_PORT}"
->>>>>>> 56c15afbd835e5fd3a6caf8167dc4bf894023c5b
     do
         NAME="${ENTRY%%|*}"
         VALUE="${ENTRY##*|}"
@@ -209,15 +189,6 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
     done
 
     export HADOOP_CONF_DIR=/hadoop/conf-override
-<<<<<<< HEAD
-    echo "DataNode sẽ advertise:"
-    echo "  dfs.datanode.hostname     → ${DN_HOSTNAME}   (SỬA: NameNode dùng hostname"
-    echo "                                này để định danh node, tránh trùng IP NAT"
-    echo "                                192.168.65.1 giữa các máy worker khác nhau)"
-    echo "  dfs.datanode.address      → ${DATANODE_HOST}:9866"
-    echo "  dfs.datanode.http.address → ${DATANODE_HOST}:9864"
-    echo "  dfs.datanode.ipc.address  → ${DATANODE_HOST}:9867"
-=======
     echo "DataNode (WORKER_ID=${WID}) sẽ advertise:"
     echo "  dfs.datanode.hostname     → ${DN_HOSTNAME}"
     echo "  dfs.datanode.address      → ${DATANODE_HOST}:${DN_XFER_PORT}"
@@ -226,7 +197,6 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
     echo "  (SỬA: port lệch +${PORT_OFFSET} theo WORKER_ID — NameNode định danh"
     echo "   datanode theo IP:PORT, port khác nhau giúp phân biệt 2 worker dù"
     echo "   IP đều bị Docker Desktop NAT thành 192.168.65.1)"
->>>>>>> 56c15afbd835e5fd3a6caf8167dc4bf894023c5b
     echo "  HADOOP_CONF_DIR=${HADOOP_CONF_DIR}"
 
     # ── Override YARN NodeManager memory từ env var ────────────────
