@@ -13,7 +13,7 @@
 #    python order_producer.py
 #
 #    # Từ trong Docker container jupyter:
-#    docker exec -it jupyter python3 /home/jovyan/work/04_streaming/order_producer.py
+#    docker exec -it jupyter python3 /home/nhom05/work/04_streaming/order_producer.py
 #
 #  Yêu cầu: pip install confluent-kafka pandas python-dotenv
 # ============================================================

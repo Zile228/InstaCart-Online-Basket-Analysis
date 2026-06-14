@@ -107,7 +107,7 @@ if [ "$USE_VIRTUAL_WORKER" = "true" ]; then
     echo ""
 fi
 echo "  Kiểm tra trạng thái cluster:"
-echo "    ./scripts/status.sh"
+echo "    ./script/status.sh"
 echo ""
 echo "  Xem log:"
 echo "    docker compose -f docker-compose.master.yml logs -f"
