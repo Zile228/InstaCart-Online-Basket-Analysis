@@ -70,7 +70,8 @@
       node (trùng IP registration), datanode report sau ghi đè datanode report
       trước → luôn chỉ thấy 1 live datanode.
       Dùng hostname (set qua dfs.datanode.use.datanode.hostname=true bên dưới
-      + HADOOP_DATANODE_OPTS trong entrypoint.sh) giải quyết việc trùng IP.
+      + entrypoint.sh ghi dfs.datanode.hostname vào hdfs-site.xml override
+      qua HADOOP_CONF_DIR) giải quyết việc trùng IP.
       YÊU CẦU: namenode container phải resolve được "datanode1"/"datanode2"
       → thêm extra_hosts trong docker-compose.master.yml cho service namenode:
         extra_hosts:
@@ -84,8 +85,9 @@
     <value>true</value>
     <description>
       SỬA: bật true — DataNode tự báo bằng HOSTNAME (datanode1/datanode2,
-      set qua -Ddfs.datanode.hostname trong HADOOP_DATANODE_OPTS) thay vì
-      IP socket (luôn bị NAT thành 192.168.65.1 trên Docker Desktop).
+      set qua dfs.datanode.hostname ghi vào hdfs-site.xml override bằng
+      entrypoint.sh/HADOOP_CONF_DIR) thay vì IP socket (luôn bị NAT thành
+      192.168.65.1 trên Docker Desktop).
       Phải đi cùng với dfs.namenode.use.datanode.hostname=true ở trên.
     </description>
   </property>
@@ -104,10 +106,15 @@
   </property>
 
   <!--
-    NOTE: dfs.datanode.address / dfs.datanode.http.address / dfs.datanode.ipc.address
-    KHÔNG đặt ở đây vì NameNode cũng đọc hdfs-site.xml và sẽ crash nếu thấy
-    giá trị không hợp lệ. Địa chỉ DataNode được inject qua HADOOP_DATANODE_OPTS
-    trong entrypoint.sh (chỉ DataNode process đọc, NameNode không bị ảnh hưởng).
+    SỬA: dfs.datanode.address / dfs.datanode.http.address / dfs.datanode.ipc.address
+    / dfs.datanode.hostname KHÔNG đặt cố định ở đây (giá trị phụ thuộc
+    DATANODE_HOST/WORKER_ID, mỗi máy worker khác nhau). NameNode cũng đọc
+    file hdfs-site.xml này — nếu để placeholder cố định ở đây NameNode có
+    thể parse nhầm và crash.
+    Thay vào đó, entrypoint.sh copy toàn bộ config sang /hadoop/conf-override,
+    chèn/ghi đè 4 property trên với giá trị đúng cho từng container, rồi set
+    HADOOP_CONF_DIR=/hadoop/conf-override (chỉ DataNode process dùng, NameNode
+    process không bị ảnh hưởng vì nó dùng HADOOP_CONF_DIR mặc định).
   -->
 
   <property>
