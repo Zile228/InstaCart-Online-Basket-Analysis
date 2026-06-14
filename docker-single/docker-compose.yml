@@ -132,8 +132,8 @@ services:
       - ../data:/home/nhom05/data
       - ./spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     cpus: "2.0"
-    mem_limit: 2g
-    memswap_limit: 2g
+    mem_limit: 6g
+    memswap_limit: 8g
     restart: on-failure
     depends_on:
       namenode:
