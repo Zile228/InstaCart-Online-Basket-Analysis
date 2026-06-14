@@ -1,5 +1,6 @@
 data/
 tests/
+src/02_spark_sql/.ipynb_checkpoints/
 __pycache__/
 *.py[cod]
 .DS_Store

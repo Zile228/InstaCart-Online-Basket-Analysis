@@ -188,7 +188,7 @@ if __name__ == "__main__":
     }
 
     producer = Producer(producer_config)
-    print(f"\nProducer initialized ✓")
+    print(f"\nProducer initialized")
 
     # 4. Produce!
     produce_events(df, producer, TOPIC_NAME, EVENTS_PER_SEC)
