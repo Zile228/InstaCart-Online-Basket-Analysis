@@ -4,8 +4,8 @@
 #  Stack: Hadoop 3.4.3 · Spark 4.1.1 · Kafka 4.1.2 · Jupyter
 #
 #  Khởi động:
-#    ./scripts/start-master.sh
-#    ./scripts/start-master.sh --with-virtual-worker
+#    ./script/start-master.sh
+#    ./script/start-master.sh --with-virtual-worker
 #
 #  Yêu cầu:
 #    - File .env với MASTER_TS_IP đã điền đúng
