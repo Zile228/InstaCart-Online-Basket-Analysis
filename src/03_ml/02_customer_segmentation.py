@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Task 03: Market basket association rules with FP-Growth.
+Task 02: Customer segmentation.
 
 This runner delegates to local_train_mllib.py with the same Colab feature
-config and seed. It only selects the basket task.
+config and seed. It only selects the segmentation task.
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from pathlib import Path
 from local_train_mllib import main as run_local_mllib
 
 
-TASK = "basket"
+TASK = "segmentation"
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 CONTAINER_DATA_DIR = Path("/home/nhom05/data")
 DEFAULT_DATA_DIR = CONTAINER_DATA_DIR if CONTAINER_DATA_DIR.exists() else PROJECT_DIR / "data"
-DEFAULT_OUTPUT_DIR = PROJECT_DIR / "local_outputs" / "03_market_basket_seed42"
+DEFAULT_OUTPUT_DIR = PROJECT_DIR / "local_outputs" / "02_customer_segmentation_seed42"
 DEFAULT_FEATURE_CONFIG = Path(__file__).with_name("selected_features_for_mllib.generated.json")
 
 
@@ -34,8 +34,8 @@ def add_default_args(args: list[str]) -> list[str]:
         "--output-dir": str(DEFAULT_OUTPUT_DIR),
         "--seed": "42",
         "--sample-fraction": "1.0",
-        "--min-support": "0.003",
-        "--min-confidence": "0.2",
+        "--k-min": "2",
+        "--k-max": "8",
         "--driver-memory": "8g",
         "--shuffle-partitions": "64",
         "--default-parallelism": "64",

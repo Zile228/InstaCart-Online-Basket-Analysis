@@ -163,8 +163,8 @@ services:
       - spark-master
       - namenode
       - kafka
-    mem_limit: 2g
-    memswap_limit: 2g
+    mem_limit: ${JUPYTER_MEM:-8g}
+    memswap_limit: ${JUPYTER_MEM:-8g}
 
 # ─────────────────────────────────────────────────────────────
 #  VIRTUAL DATANODE — Profile: virtual-worker
