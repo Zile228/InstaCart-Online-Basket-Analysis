@@ -221,7 +221,12 @@ user_base = prior_full.groupBy("user_id").agg(
     F.avg(F.col("days_since_prior_order")).alias("u_avg_days_since_prior"),
     F.stddev(F.col("days_since_prior_order")).alias("u_std_days_since_prior"),
     # Organic ratio
-    F.sum(F.col("is_organic").cast(DoubleType())).alias("_organic_sum")
+    F.sum(F.col("is_organic").cast(DoubleType())).alias("_organic_sum"),
+    # Keep these in sync with src/03_ml/local_train_mllib.py.
+    F.countDistinct("aisle_id").alias("u_unique_aisles"),
+    F.countDistinct("department_id").alias("u_unique_departments"),
+    F.sum(F.when(F.col("department") == "produce", 1.0).otherwise(0.0)).alias("_produce_sum"),
+    F.sum(F.when(F.col("department") == "dairy eggs", 1.0).otherwise(0.0)).alias("_dairy_sum")
 )
 
 # Derived columns
@@ -238,7 +243,15 @@ user_base = user_base \
         "u_organic_ratio",
         F.col("_organic_sum") / F.col("u_total_items")
     ) \
-    .drop("_reorder_sum", "_organic_sum")
+    .withColumn(
+        "u_produce_ratio",
+        F.col("_produce_sum") / F.col("u_total_items")
+    ) \
+    .withColumn(
+        "u_dairy_ratio",
+        F.col("_dairy_sum") / F.col("u_total_items")
+    ) \
+    .drop("_reorder_sum", "_organic_sum", "_produce_sum", "_dairy_sum")
 
 # Handle null std (users with only 1 order have no variance)
 user_base = user_base.fillna({"u_std_days_since_prior": 0.0})
@@ -523,7 +536,11 @@ rfv_features = user_features.select(
     F.col("u_total_orders").alias("frequency"),
     F.col("u_avg_basket_size").alias("volume"),
     F.col("u_reorder_rate"),
-    F.col("u_organic_ratio")
+    F.col("u_organic_ratio"),
+    F.col("u_distinct_products"),
+    F.col("u_unique_departments"),
+    F.col("u_produce_ratio"),
+    F.col("u_dairy_ratio")
 ).join(recency_df, on="user_id", how="left") \
  .fillna({"recency": 0.0})
 
@@ -561,7 +578,7 @@ print(f"\n✓ Saved rfv_features to {FEATURES_BASE}/rfv_features.parquet")
 import os
 import pandas as pd
 
-EXPORT_PATH = "/home/jovyan/work/exports"
+EXPORT_PATH = os.getenv("EXPORT_DIR", "/home/nhom05/work/exports")
 os.makedirs(EXPORT_PATH, exist_ok=True)
 print(f"Export directory: {EXPORT_PATH}")
 print("-" * 50)
