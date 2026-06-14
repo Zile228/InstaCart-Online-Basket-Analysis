@@ -132,14 +132,23 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
 
     mkdir -p "${DATANODE_DIR}" /hadoop/tmp "${HADOOP_HOME}/logs"
 
-    # ── FIX: Inject Tailscale IP qua HADOOP_DATANODE_OPTS ─────────
-    # Vấn đề: DataNode tự detect IP sai (vd: 151.101.64.223 Fastly CDN).
-    # Tại sao KHÔNG dùng hdfs-site.xml:
-    #   dfs.datanode.address trong hdfs-site.xml bị NameNode parse khi khởi động.
-    #   Placeholder chưa replace → NameNode crash: "Does not contain a valid host:port"
-    # Giải pháp đúng: inject qua HADOOP_DATANODE_OPTS (Java -D system property).
-    #   Hadoop ưu tiên -D property hơn hdfs-site.xml.
-    #   HADOOP_DATANODE_OPTS chỉ được DataNode JVM đọc, NameNode không bị ảnh hưởng.
+    # ── Override datanode address/hostname/port qua HADOOP_CONF_DIR (XML) ──
+    # PHÁT HIỆN MỚI (sau khi test dfs.datanode.hostname): KHÔNG hiệu quả.
+    # DatanodeID.ipAddr mà NameNode lưu được set từ ĐỊA CHỈ IP CỦA RPC
+    # CONNECTION THỰC TẾ (Server.getRemoteIp() phía NameNode khi nhận
+    # registerDatanode()), KHÔNG đọc từ config phía DataNode. Trên Docker
+    # Desktop (Windows/macOS), traffic từ MỌI container worker machine đều
+    # bị NAT về cùng 1 IP nội bộ "192.168.65.1" — không có cách nào từ phía
+    # DataNode khai báo lại IP này.
+    #
+    # FIX THỰC SỰ: NameNode định danh datanode theo key (ipAddr:xferPort).
+    # Nếu IP buộc phải trùng (192.168.65.1), thì PORT phải khác nhau giữa
+    # các worker để tránh đụng key. Dùng WORKER_ID để offset port:
+    #   WORKER_ID=1 → 9866/9864/9867 (giữ nguyên default)
+    #   WORKER_ID=2 → 9876/9874/9877 (+10)
+    #   WORKER_ID=N → port mặc định + (N-1)*10
+    # Container vẫn LISTEN trên các port này, và docker-compose.worker.yml
+    # publish đúng port tương ứng ra host.
     if [ -z "${DATANODE_HOST:-}" ]; then
         echo "ERROR: Biến DATANODE_HOST chưa được set."
         echo "  Thêm DATANODE_HOST=<WORKER_TAILSCALE_IP> vào environment"
@@ -148,17 +157,12 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
         exit 1
     fi
 
-    # ── Override datanode address/hostname qua HADOOP_CONF_DIR (XML) ──
-    # SỬA: -Ddfs.datanode.address qua HADOOP_DATANODE_OPTS có hiệu lực
-    # (Hadoop có cơ chế riêng đọc property này từ system property trong code
-    # DataNode.java), NHƯNG -Ddfs.datanode.hostname KHÔNG có cơ chế tương tự
-    # → bị bỏ qua hoàn toàn → DataNode tự lấy IP từ socket connection (NAT'd
-    # 192.168.65.1) làm registration hostname → 2 worker trùng nhau → loop
-    # DNA_REGISTER vô hạn (mỗi bên ghi đè bên kia mỗi ~3s).
-    #
-    # Fix: thêm dfs.datanode.address VÀ dfs.datanode.hostname vào file XML
-    # thật (qua HADOOP_CONF_DIR override), để Configuration object có giá trị
-    # đúng ngay từ đầu — không phụ thuộc system property.
+    WID="${WORKER_ID:-1}"
+    PORT_OFFSET=$(( (WID - 1) * 10 ))
+    DN_XFER_PORT="${DN_XFER_PORT:-$((9866 + PORT_OFFSET))}"
+    DN_HTTP_PORT="${DN_HTTP_PORT:-$((9864 + PORT_OFFSET))}"
+    DN_IPC_PORT="${DN_IPC_PORT:-$((9867 + PORT_OFFSET))}"
+
     mkdir -p /hadoop/conf-override
     cp -r "${HADOOP_HOME}/etc/hadoop/." /hadoop/conf-override/
 
@@ -167,9 +171,9 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
     # Thêm/ghi đè dfs.datanode.hostname + dfs.datanode.address/http/ipc vào hdfs-site.xml override
     for ENTRY in \
         "dfs.datanode.hostname|${DN_HOSTNAME}" \
-        "dfs.datanode.address|${DATANODE_HOST}:9866" \
-        "dfs.datanode.http.address|${DATANODE_HOST}:9864" \
-        "dfs.datanode.ipc.address|${DATANODE_HOST}:9867"
+        "dfs.datanode.address|${DATANODE_HOST}:${DN_XFER_PORT}" \
+        "dfs.datanode.http.address|${DATANODE_HOST}:${DN_HTTP_PORT}" \
+        "dfs.datanode.ipc.address|${DATANODE_HOST}:${DN_IPC_PORT}"
     do
         NAME="${ENTRY%%|*}"
         VALUE="${ENTRY##*|}"
@@ -185,13 +189,14 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
     done
 
     export HADOOP_CONF_DIR=/hadoop/conf-override
-    echo "DataNode sẽ advertise:"
-    echo "  dfs.datanode.hostname     → ${DN_HOSTNAME}   (SỬA: NameNode dùng hostname"
-    echo "                                này để định danh node, tránh trùng IP NAT"
-    echo "                                192.168.65.1 giữa các máy worker khác nhau)"
-    echo "  dfs.datanode.address      → ${DATANODE_HOST}:9866"
-    echo "  dfs.datanode.http.address → ${DATANODE_HOST}:9864"
-    echo "  dfs.datanode.ipc.address  → ${DATANODE_HOST}:9867"
+    echo "DataNode (WORKER_ID=${WID}) sẽ advertise:"
+    echo "  dfs.datanode.hostname     → ${DN_HOSTNAME}"
+    echo "  dfs.datanode.address      → ${DATANODE_HOST}:${DN_XFER_PORT}"
+    echo "  dfs.datanode.http.address → ${DATANODE_HOST}:${DN_HTTP_PORT}"
+    echo "  dfs.datanode.ipc.address  → ${DATANODE_HOST}:${DN_IPC_PORT}"
+    echo "  (SỬA: port lệch +${PORT_OFFSET} theo WORKER_ID — NameNode định danh"
+    echo "   datanode theo IP:PORT, port khác nhau giúp phân biệt 2 worker dù"
+    echo "   IP đều bị Docker Desktop NAT thành 192.168.65.1)"
     echo "  HADOOP_CONF_DIR=${HADOOP_CONF_DIR}"
 
     # ── Override YARN NodeManager memory từ env var ────────────────
