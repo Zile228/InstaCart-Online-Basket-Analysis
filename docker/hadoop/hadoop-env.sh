@@ -5,7 +5,13 @@
 
 export JAVA_HOME=/opt/java/openjdk
 export HADOOP_HOME=/opt/hadoop
-export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop
+# FIX: KHÔNG hardcode HADOOP_CONF_DIR ở đây.
+# hadoop-env.sh được source bởi mỗi hdfs/yarn command → nếu hardcode thì
+# lệnh `export HADOOP_CONF_DIR=/hadoop/conf-override` trong entrypoint.sh
+# sẽ bị RESET về default mỗi lần hdfs/yarn chạy, khiến DataNode đọc
+# config gốc thay vì conf-override (không có port offset, không có hostname).
+# Dùng ${HADOOP_CONF_DIR:-...} để chỉ set khi chưa có giá trị từ ngoài.
+export HADOOP_CONF_DIR=${HADOOP_CONF_DIR:-${HADOOP_HOME}/etc/hadoop}
 export HADOOP_LOG_DIR=${HADOOP_HOME}/logs
 export HADOOP_PID_DIR=/tmp
 
