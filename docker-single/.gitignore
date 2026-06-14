@@ -1,8 +1,6 @@
-# ============================================================
 #  .gitignore cho thư mục docker/
-# ============================================================
 
-# File .env chứa IP thực — KHÔNG commit lên git
+# File .env chứa IP thực. KHÔNG commit lên git
 .env
 
 # Docker volumes và data tạm
