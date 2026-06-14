@@ -148,27 +148,62 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
         exit 1
     fi
 
-    export HADOOP_DATANODE_OPTS="${HADOOP_DATANODE_OPTS:-} -Ddfs.datanode.address=${DATANODE_HOST}:9866 -Ddfs.datanode.http.address=${DATANODE_HOST}:9864 -Ddfs.datanode.ipc.address=${DATANODE_HOST}:9867 -Ddfs.datanode.hostname=$(hostname)"
-    echo "DataNode sẽ advertise IP: ${DATANODE_HOST}"
+    # ── Override datanode address/hostname qua HADOOP_CONF_DIR (XML) ──
+    # SỬA: -Ddfs.datanode.address qua HADOOP_DATANODE_OPTS có hiệu lực
+    # (Hadoop có cơ chế riêng đọc property này từ system property trong code
+    # DataNode.java), NHƯNG -Ddfs.datanode.hostname KHÔNG có cơ chế tương tự
+    # → bị bỏ qua hoàn toàn → DataNode tự lấy IP từ socket connection (NAT'd
+    # 192.168.65.1) làm registration hostname → 2 worker trùng nhau → loop
+    # DNA_REGISTER vô hạn (mỗi bên ghi đè bên kia mỗi ~3s).
+    #
+    # Fix: thêm dfs.datanode.address VÀ dfs.datanode.hostname vào file XML
+    # thật (qua HADOOP_CONF_DIR override), để Configuration object có giá trị
+    # đúng ngay từ đầu — không phụ thuộc system property.
+    mkdir -p /hadoop/conf-override
+    cp -r "${HADOOP_HOME}/etc/hadoop/." /hadoop/conf-override/
+
+    DN_HOSTNAME="$(hostname)"
+
+    # Thêm/ghi đè dfs.datanode.hostname + dfs.datanode.address/http/ipc vào hdfs-site.xml override
+    for ENTRY in \
+        "dfs.datanode.hostname|${DN_HOSTNAME}" \
+        "dfs.datanode.address|${DATANODE_HOST}:9866" \
+        "dfs.datanode.http.address|${DATANODE_HOST}:9864" \
+        "dfs.datanode.ipc.address|${DATANODE_HOST}:9867"
+    do
+        NAME="${ENTRY%%|*}"
+        VALUE="${ENTRY##*|}"
+        if grep -q "<name>${NAME}</name>" /hadoop/conf-override/hdfs-site.xml; then
+            # Property đã tồn tại → sed giá trị
+            sed -i "/<name>${NAME}<\/name>/{n; s|<value>.*</value>|<value>${VALUE}</value>|}" \
+                /hadoop/conf-override/hdfs-site.xml
+        else
+            # Chưa tồn tại → chèn property mới trước </configuration>
+            sed -i "s|</configuration>|  <property>\n    <name>${NAME}</name>\n    <value>${VALUE}</value>\n  </property>\n</configuration>|" \
+                /hadoop/conf-override/hdfs-site.xml
+        fi
+    done
+
+    export HADOOP_CONF_DIR=/hadoop/conf-override
+    echo "DataNode sẽ advertise:"
+    echo "  dfs.datanode.hostname     → ${DN_HOSTNAME}   (SỬA: NameNode dùng hostname"
+    echo "                                này để định danh node, tránh trùng IP NAT"
+    echo "                                192.168.65.1 giữa các máy worker khác nhau)"
     echo "  dfs.datanode.address      → ${DATANODE_HOST}:9866"
     echo "  dfs.datanode.http.address → ${DATANODE_HOST}:9864"
     echo "  dfs.datanode.ipc.address  → ${DATANODE_HOST}:9867"
-    echo "  dfs.datanode.hostname     → $(hostname)"
-    echo "  (SỬA: NameNode dùng hostname này để định danh datanode, tránh"
-    echo "   trùng IP khi nhiều máy worker đều bị NAT về cùng 1 IP nội bộ)"
+    echo "  HADOOP_CONF_DIR=${HADOOP_CONF_DIR}"
 
     # ── Override YARN NodeManager memory từ env var ────────────────
-    # Hadoop không đọc env var để override XML → dùng HADOOP_CONF_DIR trick:
-    # copy toàn bộ config ra thư mục riêng, sed giá trị, rồi trỏ Hadoop vào đó.
+    # /hadoop/conf-override đã được tạo ở bước trên (datanode hostname fix),
+    # chỉ cần sed thêm vào yarn-site.xml trong cùng thư mục — KHÔNG cp -r lại
+    # (sẽ xóa mất các sửa đổi hdfs-site.xml ở trên).
     if [ -n "${YARN_NODEMANAGER_RESOURCE_MEMORY_MB:-}" ]; then
         echo "Overriding YARN NM memory → ${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}MB"
-        mkdir -p /hadoop/conf-override
-        cp -r "${HADOOP_HOME}/etc/hadoop/." /hadoop/conf-override/
         sed -i "/<name>yarn.nodemanager.resource.memory-mb<\/name>/{n; s|<value>[0-9]*<\/value>|<value>${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}<\/value>|}" \
             /hadoop/conf-override/yarn-site.xml
         sed -i "/<name>yarn.scheduler.maximum-allocation-mb<\/name>/{n; s|<value>[0-9]*<\/value>|<value>${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}<\/value>|}" \
             /hadoop/conf-override/yarn-site.xml
-        echo "  YARN NM memory overridden → ${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}MB"
     fi
 
     # Ưu tiên dùng SERVICE_PRECONDITION (format: "HOST:PORT") để wait
