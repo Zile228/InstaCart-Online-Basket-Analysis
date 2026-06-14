@@ -127,6 +127,8 @@ services:
       # SPARK_WORKER_PORT diều chỉnh trong .env: worker-1→8081, worker-2→8082
       # Không dùng "808${WORKER_ID}:8081" vì Git Bash không expand variable trong YAML string
       - "${SPARK_WORKER_PORT:-8081}:8081"
+      - "4042:4042"    # ← THÊM: BlockManager port để driver fetch shuffle
+      - "4041:4041"    # ← THÊM: executor port (phòng trường hợp cần)
     extra_hosts:
       # QUAN TRỌNG: resolve "spark-master" → Tailscale IP của master machine
       # Spark Worker gọi spark-master:7077 để đăng ký
