@@ -171,9 +171,9 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
     # Thêm/ghi đè dfs.datanode.hostname + dfs.datanode.address/http/ipc vào hdfs-site.xml override
     for ENTRY in \
         "dfs.datanode.hostname|${DN_HOSTNAME}" \
-        "dfs.datanode.address|${DATANODE_HOST}:${DN_XFER_PORT}" \
-        "dfs.datanode.http.address|${DATANODE_HOST}:${DN_HTTP_PORT}" \
-        "dfs.datanode.ipc.address|${DATANODE_HOST}:${DN_IPC_PORT}"
+        "dfs.datanode.address|0.0.0.0:${DN_XFER_PORT}" \
+        "dfs.datanode.http.address|0.0.0.0:${DN_HTTP_PORT}" \
+        "dfs.datanode.ipc.address|0.0.0.0:${DN_IPC_PORT}"
     do
         NAME="${ENTRY%%|*}"
         VALUE="${ENTRY##*|}"
@@ -191,9 +191,9 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
     export HADOOP_CONF_DIR=/hadoop/conf-override
     echo "DataNode (WORKER_ID=${WID}) sẽ advertise:"
     echo "  dfs.datanode.hostname     → ${DN_HOSTNAME}"
-    echo "  dfs.datanode.address      → ${DATANODE_HOST}:${DN_XFER_PORT}"
-    echo "  dfs.datanode.http.address → ${DATANODE_HOST}:${DN_HTTP_PORT}"
-    echo "  dfs.datanode.ipc.address  → ${DATANODE_HOST}:${DN_IPC_PORT}"
+    echo "  dfs.datanode.address      → 0.0.0.0:${DN_XFER_PORT}  (bind all; advertise via hostname)"
+    echo "  dfs.datanode.http.address → 0.0.0.0:${DN_HTTP_PORT}"
+    echo "  dfs.datanode.ipc.address  → 0.0.0.0:${DN_IPC_PORT}"
     echo "  (SỬA: port lệch +${PORT_OFFSET} theo WORKER_ID — NameNode định danh"
     echo "   datanode theo IP:PORT, port khác nhau giúp phân biệt 2 worker dù"
     echo "   IP đều bị Docker Desktop NAT thành 192.168.65.1)"
