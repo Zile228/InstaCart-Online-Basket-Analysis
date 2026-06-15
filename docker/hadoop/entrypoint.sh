@@ -1,16 +1,15 @@
 #!/bin/bash
 # ============================================================
-#  Hadoop Entrypoint — detects HADOOP_ROLE and starts service
-#  HADOOP_ROLE=namenode → format (once) + start NameNode + YARN RM
-#  HADOOP_ROLE=datanode → wait for NameNode + start DataNode
+#  Hadoop Entrypoint - Nhận diện HADOOP_ROLE để khởi chạy dịch vụ phù hợp
+#  HADOOP_ROLE=namenode -> Khởi tạo + chạy NameNode + YARN RM
+#  HADOOP_ROLE=datanode -> Chờ NameNode + chạy DataNode
 # ============================================================
 
-# KHÔNG dùng set -e: script quản lý nhiều process nền,
-# một lệnh phụ fail không nên kéo chết toàn bộ container.
+# Không dùng set -e vì script quản lý nhiều tiến trình chạy ngầm,
+# tránh việc một lệnh phụ bị lỗi làm tắt toàn bộ container.
 set -u
 
-# Fallback cho HADOOP_VERSION: biến được set bởi Dockerfile ENV,
-# nhưng với set -u, nếu không được export đúng cách sẽ gây lỗi unbound.
+# Dự phòng cho HADOOP_VERSION nếu không được export đúng cách.
 HADOOP_VERSION="${HADOOP_VERSION:-3.4.3}"
 
 HADOOP_ROLE="${HADOOP_ROLE:-namenode}"
@@ -19,10 +18,10 @@ DATANODE_DIR="/hadoop/dfs/data"
 FORMAT_MARKER="${NAMENODE_DIR}/.formatted"
 
 echo "======================================================"
-echo "  Hadoop ${HADOOP_VERSION} — starting as: ${HADOOP_ROLE}"
+echo "  Hadoop ${HADOOP_VERSION} - starting as: ${HADOOP_ROLE}"
 echo "======================================================"
 
-# ── Wait function ──────────────────────────────────────────
+# --- Hàm chờ dịch vụ sẵn sàng (Wait function) ---
 wait_for_service() {
     local HOST=$1
     local PORT=$2
@@ -42,12 +41,12 @@ wait_for_service() {
     echo "  ${HOST}:${PORT} is up!"
 }
 
-# ── NameNode ───────────────────────────────────────────────
+# --- Cấu hình cho NameNode ---
 if [ "${HADOOP_ROLE}" = "namenode" ]; then
 
     mkdir -p "${NAMENODE_DIR}" /hadoop/tmp "${HADOOP_HOME}/logs"
 
-    # Format only once
+    # Chỉ định dạng (format) ổ đĩa đúng một lần đầu tiên khi khởi tạo
     if [ ! -f "${FORMAT_MARKER}" ]; then
         echo "Formatting HDFS NameNode for the first time..."
         hdfs namenode -format -force -nonInteractive
@@ -61,11 +60,7 @@ if [ "${HADOOP_ROLE}" = "namenode" ]; then
     hdfs namenode &
     NAMENODE_PID=$!
 
-    # Bước 1: Chờ NameNode Web UI (port 9870)
-    # FIX: dùng $(hostname) thay vì localhost vì NameNode bind vào
-    #      hostname "namenode" (172.18.0.x), KHÔNG phải 127.0.0.1.
-    #      nc -z localhost 9870 luôn fail → script exit sau 3 phút
-    #      → kill toàn bộ background process kể cả YARN RM.
+    # Bước 1: Chờ NameNode Web UI hoạt động trên cổng 9870
     echo "[1/3] Waiting for NameNode Web UI on port 9870..."
     count=0
     while ! nc -z "$(hostname)" 9870 2>/dev/null; do
@@ -79,8 +74,7 @@ if [ "${HADOOP_ROLE}" = "namenode" ]; then
     done
     echo "  NameNode is up!"
 
-    # Bước 2: Chờ HDFS thoát Safe Mode
-    # YARN crash ngay nếu HDFS còn Safe Mode (không ghi được /tmp/hadoop-yarn)
+    # Bước 2: Chờ HDFS thoát khỏi chế độ an toàn (Safe Mode)
     echo "[2/3] Waiting for HDFS to exit Safe Mode..."
     count=0
     while true; do
@@ -91,7 +85,7 @@ if [ "${HADOOP_ROLE}" = "namenode" ]; then
         fi
         count=$((count + 1))
         if [ "$count" -ge 30 ]; then
-            echo "  Safe Mode timeout — forcing exit..."
+            echo "  Safe Mode timeout - forcing exit..."
             hdfs dfsadmin -safemode forceExit 2>/dev/null || true
             sleep 3
             break
@@ -100,14 +94,14 @@ if [ "${HADOOP_ROLE}" = "namenode" ]; then
         sleep 5
     done
 
-    # Bước 3: Chuẩn bị thư mục HDFS cho YARN
+    # Bước 3: Tạo các thư mục cần thiết cho YARN trên hệ thống HDFS
     echo "[3/3] Preparing YARN directories on HDFS..."
     hdfs dfs -mkdir -p /tmp/hadoop-yarn/staging/history/done_intermediate 2>/dev/null || true
     hdfs dfs -mkdir -p /user/root 2>/dev/null || true
     hdfs dfs -chmod -R 777 /tmp 2>/dev/null || true
     echo "  HDFS directories ready."
 
-    # Start YARN ResourceManager
+    # Khởi động YARN ResourceManager
     echo "Starting YARN ResourceManager..."
     yarn resourcemanager &
     YARN_PID=$!
@@ -119,36 +113,16 @@ if [ "${HADOOP_ROLE}" = "namenode" ]; then
     echo "  YARN RM UI  : http://localhost:8088"
     echo "======================================================"
 
-    # Giám sát: container sống chừng nào NameNode còn sống
-    # YARN được phép restart mà không kéo chết container
+    # Giữ container hoạt động liên tục chừng nào tiến trình NameNode còn chạy
     wait $NAMENODE_PID
     echo "NameNode exited. Shutting down container."
 
-# ── DataNode + NodeManager ─────────────────────────────────
-# FIX: thêm NodeManager để YARN ResourceManager có node đăng ký.
-#      Không có NodeManager → YARN RM khởi động nhưng không có
-#      worker nào → RM tự crash hoặc treo → port 8088 chết.
+# --- Cấu hình cho DataNode và NodeManager ---
 elif [ "${HADOOP_ROLE}" = "datanode" ]; then
 
     mkdir -p "${DATANODE_DIR}" /hadoop/tmp "${HADOOP_HOME}/logs"
 
-    # ── Override datanode address/hostname/port qua HADOOP_CONF_DIR (XML) ──
-    # PHÁT HIỆN MỚI (sau khi test dfs.datanode.hostname): KHÔNG hiệu quả.
-    # DatanodeID.ipAddr mà NameNode lưu được set từ ĐỊA CHỈ IP CỦA RPC
-    # CONNECTION THỰC TẾ (Server.getRemoteIp() phía NameNode khi nhận
-    # registerDatanode()), KHÔNG đọc từ config phía DataNode. Trên Docker
-    # Desktop (Windows/macOS), traffic từ MỌI container worker machine đều
-    # bị NAT về cùng 1 IP nội bộ "192.168.65.1" — không có cách nào từ phía
-    # DataNode khai báo lại IP này.
-    #
-    # FIX THỰC SỰ: NameNode định danh datanode theo key (ipAddr:xferPort).
-    # Nếu IP buộc phải trùng (192.168.65.1), thì PORT phải khác nhau giữa
-    # các worker để tránh đụng key. Dùng WORKER_ID để offset port:
-    #   WORKER_ID=1 → 9866/9864/9867 (giữ nguyên default)
-    #   WORKER_ID=2 → 9876/9874/9877 (+10)
-    #   WORKER_ID=N → port mặc định + (N-1)*10
-    # Container vẫn LISTEN trên các port này, và docker-compose.worker.yml
-    # publish đúng port tương ứng ra host.
+    # Tự động thay đổi cổng kết nối của DataNode dựa trên WORKER_ID để tránh xung đột
     if [ -z "${DATANODE_HOST:-}" ]; then
         echo "ERROR: Biến DATANODE_HOST chưa được set."
         echo "  Thêm DATANODE_HOST=<WORKER_TAILSCALE_IP> vào environment"
@@ -168,7 +142,7 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
 
     DN_HOSTNAME="$(hostname)"
 
-    # Thêm/ghi đè dfs.datanode.hostname + dfs.datanode.address/http/ipc vào hdfs-site.xml override
+    # Cập nhật địa chỉ và cổng mới vào file cấu hình hdfs-site.xml tạm thời
     for ENTRY in \
         "dfs.datanode.hostname|${DN_HOSTNAME}" \
         "dfs.datanode.address|0.0.0.0:${DN_XFER_PORT}" \
@@ -178,11 +152,11 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
         NAME="${ENTRY%%|*}"
         VALUE="${ENTRY##*|}"
         if grep -q "<name>${NAME}</name>" /hadoop/conf-override/hdfs-site.xml; then
-            # Property đã tồn tại → sed giá trị
+            # Cập nhật giá trị nếu thuộc tính đã tồn tại
             sed -i "/<name>${NAME}<\/name>/{n; s|<value>.*</value>|<value>${VALUE}</value>|}" \
                 /hadoop/conf-override/hdfs-site.xml
         else
-            # Chưa tồn tại → chèn property mới trước </configuration>
+            # Chèn thuộc tính mới vào ngay trước thẻ đóng cấu hình nếu chưa tồn tại
             sed -i "s|</configuration>|  <property>\n    <name>${NAME}</name>\n    <value>${VALUE}</value>\n  </property>\n</configuration>|" \
                 /hadoop/conf-override/hdfs-site.xml
         fi
@@ -190,30 +164,23 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
 
     export HADOOP_CONF_DIR=/hadoop/conf-override
     echo "DataNode (WORKER_ID=${WID}) sẽ advertise:"
-    echo "  dfs.datanode.hostname     → ${DN_HOSTNAME}"
-    echo "  dfs.datanode.address      → 0.0.0.0:${DN_XFER_PORT}  (bind all; advertise via hostname)"
-    echo "  dfs.datanode.http.address → 0.0.0.0:${DN_HTTP_PORT}"
-    echo "  dfs.datanode.ipc.address  → 0.0.0.0:${DN_IPC_PORT}"
-    echo "  (SỬA: port lệch +${PORT_OFFSET} theo WORKER_ID — NameNode định danh"
-    echo "   datanode theo IP:PORT, port khác nhau giúp phân biệt 2 worker dù"
-    echo "   IP đều bị Docker Desktop NAT thành 192.168.65.1)"
+    echo "  dfs.datanode.hostname     -> ${DN_HOSTNAME}"
+    echo "  dfs.datanode.address      -> 0.0.0.0:${DN_XFER_PORT}  (bind all; advertise via hostname)"
+    echo "  dfs.datanode.http.address -> 0.0.0.0:${DN_HTTP_PORT}"
+    echo "  dfs.datanode.ipc.address  -> 0.0.0.0:${DN_IPC_PORT}"
+    echo "  (Thay đổi cổng +${PORT_OFFSET} theo WORKER_ID để tránh trùng lặp)"
     echo "  HADOOP_CONF_DIR=${HADOOP_CONF_DIR}"
 
-    # ── Override YARN NodeManager memory từ env var ────────────────
-    # /hadoop/conf-override đã được tạo ở bước trên (datanode hostname fix),
-    # chỉ cần sed thêm vào yarn-site.xml trong cùng thư mục — KHÔNG cp -r lại
-    # (sẽ xóa mất các sửa đổi hdfs-site.xml ở trên).
+    # Ghi đè cấu hình dung lượng RAM của YARN NodeManager từ biến môi trường
     if [ -n "${YARN_NODEMANAGER_RESOURCE_MEMORY_MB:-}" ]; then
-        echo "Overriding YARN NM memory → ${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}MB"
+        echo "Overriding YARN NM memory -> ${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}MB"
         sed -i "/<name>yarn.nodemanager.resource.memory-mb<\/name>/{n; s|<value>[0-9]*<\/value>|<value>${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}<\/value>|}" \
             /hadoop/conf-override/yarn-site.xml
         sed -i "/<name>yarn.scheduler.maximum-allocation-mb<\/name>/{n; s|<value>[0-9]*<\/value>|<value>${YARN_NODEMANAGER_RESOURCE_MEMORY_MB}<\/value>|}" \
             /hadoop/conf-override/yarn-site.xml
     fi
 
-    # Ưu tiên dùng SERVICE_PRECONDITION (format: "HOST:PORT") để wait
-    # Khi chạy trên worker machine, SERVICE_PRECONDITION="${MASTER_TS_IP}:9870"
-    # → tránh wait bằng hostname "namenode" có thể chưa resolve kịp
+    # Chờ NameNode sẵn sàng dựa trên biến SERVICE_PRECONDITION nếu được thiết lập
     if [ -n "${SERVICE_PRECONDITION:-}" ]; then
         WAIT_HOST=$(echo "$SERVICE_PRECONDITION" | cut -d: -f1)
         WAIT_PORT=$(echo "$SERVICE_PRECONDITION" | cut -d: -f2)
@@ -237,11 +204,11 @@ elif [ "${HADOOP_ROLE}" = "datanode" ]; then
     echo "  NodeManager UI : http://$(hostname):8042"
     echo "======================================================"
 
-    # Container sống chừng nào DataNode còn sống
+    # Giữ container hoạt động liên tục chừng nào tiến trình DataNode còn chạy
     wait $DATANODE_PID
     echo "DataNode exited. Shutting down container."
 
-# ── Unknown role ───────────────────────────────────────────
+# --- Trường hợp vai trò (role) không hợp lệ ---
 else
     echo "ERROR: Unknown HADOOP_ROLE='${HADOOP_ROLE}'"
     echo "  Valid values: namenode, datanode"

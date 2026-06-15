@@ -66,7 +66,6 @@ check_service "YARN ResourceManager"  "$MASTER" 8088 "http://$MASTER:8088"
 check_service "YARN RM Scheduler"     "$MASTER" 8032 "$MASTER:8032"
 check_service "Spark Master UI"       "$MASTER" 8080 "http://$MASTER:8080"
 check_service "Spark Master RPC"      "$MASTER" 7077 "spark://$MASTER:7077"
-check_service "Kafka"                 "$MASTER" 9092 "$MASTER:9092"
 check_service "Jupyter"               "$MASTER" 8888 "http://$MASTER:8888"
 
 # ── DataNodes đang đăng ký ────────────────────────────────────
@@ -121,7 +120,7 @@ fi
 echo ""
 echo "--- Local Docker Containers ---"
 docker ps --format "  {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null \
-    | grep -E "(namenode|spark|kafka|jupyter|datanode|virtual)" \
+    | grep -E "(namenode|spark|jupyter|datanode|virtual)" \
     | sed 's/\t/  /g' \
     || echo "  (Không có container nào đang chạy)"
 

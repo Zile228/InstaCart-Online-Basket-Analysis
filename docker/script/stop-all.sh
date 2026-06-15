@@ -4,7 +4,7 @@
 #
 #  Thứ tự dừng:
 #    1. Worker (datanode, spark-worker) — dừng trước
-#    2. Master (namenode, spark-master, kafka, jupyter) — dừng sau
+#    2. Master (namenode, spark-master, jupyter) — dừng sau
 #
 #  Usage:
 #    ./scripts/stop-all.sh          # Dừng và xoá containers (giữ volumes)

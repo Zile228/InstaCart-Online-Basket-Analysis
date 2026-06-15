@@ -94,7 +94,6 @@ if [ -n "${MASTER_TS_IP:-}" ] && [ "$MASTER_TS_IP" != "100.x.x.x" ]; then
         check_port 8088 "YARN UI"
         check_port 8080 "Spark UI"
         check_port 7077 "Spark RPC"
-        check_port 9092 "Kafka"
         check_port 8888 "Jupyter"
     else
         echo "  (Lệnh 'nc' không có — bỏ qua kiểm tra port)"

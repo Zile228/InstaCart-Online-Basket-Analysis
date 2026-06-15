@@ -118,7 +118,6 @@ elif check_port "$MASTER_TS_IP" 9870 5; then
 elif check_port "$MASTER_TS_IP" 8080 5; then
     echo "  Kết nối OK ✓ (Spark port 8080 respond)"
 else
-    # Thử port 9092 (Kafka) — master có nhiều port exposed
     if ! check_port "$MASTER_TS_IP" 9092 5 && ! check_port "$MASTER_TS_IP" 8888 5; then
         echo ""
         echo "  WARNING: Không kết nối được đến $MASTER_TS_IP"

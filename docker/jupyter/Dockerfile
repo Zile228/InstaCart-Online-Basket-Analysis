@@ -37,7 +37,6 @@ RUN pip3 install --no-cache-dir \
     matplotlib==3.9.0 \
     seaborn==0.13.2 \
     scikit-learn==1.5.0 \
-    confluent-kafka==2.5.0 \
     python-dotenv==1.0.1 \
     pyarrow==17.0.0 \
     tqdm==4.66.4 \

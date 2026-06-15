@@ -37,7 +37,6 @@ RUN pip3 install --no-cache-dir \
     numpy==1.26.4 \
     matplotlib==3.9.0 \
     seaborn==0.13.2 \
-    confluent-kafka==2.5.0 \
     python-dotenv==1.0.1
 
 # ── Download and install Spark 4.1.1 ─────────────────────────

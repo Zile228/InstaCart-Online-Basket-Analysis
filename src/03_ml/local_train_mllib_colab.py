@@ -185,13 +185,6 @@ def parse_args() -> argparse.Namespace:
         help="Directory for Spark local shuffle/temp files, e.g. /content/spark-tmp on Colab.",
     )
     parser.add_argument(
-        "--hdfs-namenode",
-        default=None,
-        help="HDFS namenode URI, e.g. hdfs://namenode:9000. "
-             "When set, --data-dir is treated as an HDFS path and "
-             "spark.hadoop.fs.defaultFS is configured automatically.",
-    )
-    parser.add_argument(
         "--no-progress",
         action="store_true",
         help="Disable tqdm progress bars and progress log messages.",
@@ -206,12 +199,10 @@ def create_spark(
     shuffle_partitions: int,
     default_parallelism: int,
     local_dir: str | None,
-    hdfs_namenode: str | None = None,
 ) -> SparkSession:
     builder = (
         SparkSession.builder.appName("Instacart-Local-MLlib")
         .master(master)
-        .config("spark.driver.host", "localhost")
         .config("spark.driver.memory", driver_memory)
         .config("spark.sql.shuffle.partitions", str(shuffle_partitions))
         .config("spark.default.parallelism", str(default_parallelism))
@@ -219,46 +210,18 @@ def create_spark(
         .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
         .config("spark.sql.adaptive.advisoryPartitionSizeInBytes", "64m")
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-        .config(
-            "spark.driver.extraJavaOptions",
-            "-XX:+UseG1GC "
-            "-XX:+UseStringDeduplication "
-            "-XX:InitiatingHeapOccupancyPercent=35 "
-            "-Dlog4j.rootCategory=ERROR,console",
-        )
     )
-    if hdfs_namenode:
-        builder = builder.config("spark.hadoop.fs.defaultFS", hdfs_namenode)
     if executor_memory:
         builder = builder.config("spark.executor.memory", executor_memory)
     if local_dir:
         builder = builder.config("spark.local.dir", local_dir)
 
     spark = builder.getOrCreate()
-    spark.sparkContext.setLogLevel("ERROR")
+    spark.sparkContext.setLogLevel("WARN")
     return spark
 
 
-def _is_hdfs_path(p) -> bool:
-    """Return True when p is an HDFS URI string (not a local Path)."""
-    return isinstance(p, str) and p.startswith("hdfs://")
-
-
-def validate_data_dir(data_dir) -> Dict[str, object]:
-    """Validate that all required CSV files exist.
-
-    Accepts either a local ``Path`` or an HDFS URI string
-    (e.g. ``"hdfs://namenode:9000/user/nhom05/data"``).
-    For HDFS paths, local ``Path.exists()`` is intentionally skipped —
-    Spark will raise a clear error if a file is missing at read time.
-    """
-    if _is_hdfs_path(data_dir):
-        # Return plain string paths; Spark reads them natively.
-        return {name: f"{data_dir.rstrip('/')}/{filename}"
-                for name, filename in REQUIRED_FILES.items()}
-
-    # Local path validation (original behaviour).
-    data_dir = Path(data_dir)
+def validate_data_dir(data_dir: Path) -> Dict[str, Path]:
     missing = [
         filename
         for filename in REQUIRED_FILES.values()
@@ -273,11 +236,10 @@ def validate_data_dir(data_dir) -> Dict[str, object]:
     return {name: data_dir / filename for name, filename in REQUIRED_FILES.items()}
 
 
-def read_csvs(spark: SparkSession, data_dir, sample_fraction: float, seed: int) -> Dict[str, DataFrame]:
+def read_csvs(spark: SparkSession, data_dir: Path, sample_fraction: float, seed: int) -> Dict[str, DataFrame]:
     paths = validate_data_dir(data_dir)
     dfs = {
-        # str() is a no-op for HDFS URI strings and converts local Path → str.
-        name: read_products_csv(spark, str(path)) if name == "products" else read_instacart_csv(spark, str(path))
+        name: read_products_csv(spark, str(path)) if name == "products" else read_instacart_csv(spark, path)
         for name, path in paths.items()
     }
 
@@ -293,7 +255,7 @@ def read_csvs(spark: SparkSession, data_dir, sample_fraction: float, seed: int) 
     return dfs
 
 
-def read_instacart_csv(spark: SparkSession, path) -> DataFrame:
+def read_instacart_csv(spark: SparkSession, path: Path) -> DataFrame:
     schemas = {
         "orders.csv": StructType(
             [
@@ -993,11 +955,7 @@ def main() -> None:
     args = parse_args()
     PROGRESS_ENABLED = not args.no_progress
     repo_dir = Path.cwd()
-    # Support HDFS URIs directly (e.g. hdfs://namenode:9000/user/nhom05/data).
-    if args.data_dir.startswith("hdfs://"):
-        data_dir = args.data_dir
-    else:
-        data_dir = (repo_dir / args.data_dir).resolve()
+    data_dir = (repo_dir / args.data_dir).resolve()
     output_dir = (repo_dir / args.output_dir).resolve()
     feature_dir = output_dir / "features"
 
@@ -1012,7 +970,6 @@ def main() -> None:
         args.shuffle_partitions,
         args.default_parallelism,
         args.local_dir,
-        hdfs_namenode=args.hdfs_namenode,
     )
     print(f"Spark version: {spark.version}")
     print(f"Data dir     : {data_dir}")

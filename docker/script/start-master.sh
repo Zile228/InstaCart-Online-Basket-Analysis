@@ -100,7 +100,6 @@ echo "  NameNode UI  : http://$MASTER_TS_IP:9870"
 echo "  YARN UI      : http://$MASTER_TS_IP:8088"
 echo "  Spark UI     : http://$MASTER_TS_IP:8080"
 echo "  Jupyter      : http://$MASTER_TS_IP:8888"
-echo "  Kafka        : $MASTER_TS_IP:9092"
 echo ""
 if [ "$USE_VIRTUAL_WORKER" = "true" ]; then
     echo "  Virtual Worker (Spark): http://localhost:8083"
