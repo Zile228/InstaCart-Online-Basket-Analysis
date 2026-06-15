@@ -3,12 +3,9 @@
 #  01_upload_to_hdfs.sh
 #  Upload Instacart CSV files vào HDFS
 #
-#  Cách chạy:
-#    docker exec namenode bash /home/nhom05/work/01_preprocessing/01_upload_to_hdfs.sh
-#
 #  Biến môi trường:
-#    DATA_DIR  — thư mục chứa CSV (mặc định: /home/nhom05/data)
-#    HDFS_DIR  — đích trên HDFS  (mặc định: /instacart/raw)
+#    DATA_DIR  - thư mục chứa CSV (mặc định: /home/nhom05/data)
+#    HDFS_DIR  - đích trên HDFS  (mặc định: /instacart/raw)
 # ============================================================
 
 set -e
@@ -30,17 +27,17 @@ echo -e "  HDFS target : ${HDFS_DIR}"
 echo -e "======================================================${NC}"
 echo ""
 
-# ── STEP 1: Create HDFS directories ──────────────────────────
+# STEP 1: Create HDFS directories
 echo -e "${YELLOW}[STEP 1/4] Creating HDFS directory structure...${NC}"
 hdfs dfs -mkdir -p /instacart/raw
 hdfs dfs -mkdir -p /instacart/features
 hdfs dfs -mkdir -p /instacart/models
 hdfs dfs -mkdir -p /instacart/streaming
 hdfs dfs -mkdir -p /spark-logs
-echo -e "${GREEN}  ✓ HDFS directories created${NC}"
+echo -e "${GREEN}   HDFS directories created${NC}"
 echo ""
 
-# ── STEP 2: Upload CSV files ─────────────────────────────────
+# STEP 2: Upload CSV files
 echo -e "${YELLOW}[STEP 2/4] Uploading CSV files to HDFS...${NC}"
 echo ""
 
@@ -66,10 +63,10 @@ for FILE in "${FILES[@]}"; do
         hdfs dfs -put -f "${LOCAL_PATH}" "${HDFS_PATH}"
         SIZE=$(du -h "${LOCAL_PATH}" | cut -f1)
         LINES=$(wc -l < "${LOCAL_PATH}")
-        echo -e "${GREEN}✓ done (local size: ${SIZE}, lines: ${LINES})${NC}"
+        echo -e "${GREEN}   done (local size: ${SIZE}, lines: ${LINES})${NC}"
         UPLOAD_SUCCESS=$((UPLOAD_SUCCESS + 1))
     else
-        echo -e "${RED}  ✗ NOT FOUND: ${LOCAL_PATH}${NC}"
+        echo -e "${RED}   NOT FOUND: ${LOCAL_PATH}${NC}"
         UPLOAD_FAIL=$((UPLOAD_FAIL + 1))
     fi
 done
@@ -86,7 +83,7 @@ if [ "${UPLOAD_FAIL}" -gt 0 ]; then
     echo -e "${NC}"
 fi
 
-# ── STEP 3: Verify upload ─────────────────────────────────────
+# STEP 3: Verify upload 
 echo -e "${YELLOW}[STEP 3/4] Verifying files on HDFS...${NC}"
 echo ""
 echo "=== Files in ${HDFS_DIR}/ ==="
@@ -101,7 +98,7 @@ echo "=== Total instacart directory ==="
 hdfs dfs -du -h -s /instacart/
 echo ""
 
-# ── STEP 4: DataNode health check ────────────────────────────
+# STEP 4: DataNode health check  
 echo -e "${YELLOW}[STEP 4/4] Checking HDFS cluster health...${NC}"
 hdfs dfsadmin -report | head -30
 echo ""
@@ -109,7 +106,7 @@ echo ""
 echo -e "${BLUE}======================================================"
 echo -e "  Upload Complete!"
 if [ "${UPLOAD_FAIL}" -eq 0 ]; then
-    echo -e "  ${GREEN}All 6 CSV files are on HDFS ✓${NC}"
+    echo -e "  ${GREEN}All 6 CSV files are on HDFS   ${NC}"
 else
     echo -e "  ${RED}WARNING: ${UPLOAD_FAIL} file(s) missing${NC}"
 fi

@@ -1,19 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
 <!--
-  hdfs-site.xml — HDFS configuration
-  Multi-machine: replication=1 (an toàn khi chỉ có 1 DataNode)
-  Tăng sau khi đủ 2 DataNode: hdfs dfsadmin -setSpaceQuota ...
-  hoặc đổi DFS_REPLICATION=2 trong .env và rebuild.
+  hdfs-site.xml - HDFS configuration
+
+  Multi-machine setup:
+  - Replication = 1 nếu chỉ có 1 DataNode
+  - Khi có đủ 2 DataNode thì tăng lên 2
 -->
+
 <configuration>
 
   <property>
     <name>dfs.replication</name>
     <value>2</value>
     <description>
-      Số bản sao. Đặt 1 để an toàn khi mới khởi động.
-      Tăng lên 2 khi có đủ 2 DataNode đang chạy.
+      So ban sao cua moi block. Dat 1 khi moi khoi dong,
+      tang len 2 khi co du 2 DataNode dang chay.
     </description>
   </property>
 
@@ -30,7 +33,9 @@
   <property>
     <name>dfs.blocksize</name>
     <value>134217728</value>
-    <description>128 MB block size — phù hợp cho CSV và Parquet lớn.</description>
+    <description>
+      Kich thuoc block 128 MB, phu hop cho CSV va Parquet lon.
+    </description>
   </property>
 
   <property>
@@ -62,21 +67,18 @@
     <name>dfs.namenode.use.datanode.hostname</name>
     <value>true</value>
     <description>
-      SỬA: bật true để NameNode dùng HOSTNAME (datanode1/datanode2) thay vì IP
-      khi định danh và liên lạc ngược về DataNode.
-      Lý do: trên Docker Desktop (Windows/macOS), traffic từ container worker
-      machine đến namenode đều bị NAT về cùng 1 IP nội bộ (vd 192.168.65.1)
-      bất kể máy worker nào — khiến NameNode coi 2 datanode khác máy là MỘT
-      node (trùng IP registration), datanode report sau ghi đè datanode report
-      trước → luôn chỉ thấy 1 live datanode.
-      Dùng hostname (set qua dfs.datanode.use.datanode.hostname=true bên dưới
-      + entrypoint.sh ghi dfs.datanode.hostname vào hdfs-site.xml override
-      qua HADOOP_CONF_DIR) giải quyết việc trùng IP.
-      YÊU CẦU: namenode container phải resolve được "datanode1"/"datanode2"
-      → thêm extra_hosts trong docker-compose.master.yml cho service namenode:
-        extra_hosts:
-          - "datanode1:${WORKER1_TS_IP:-127.0.0.1}"
-          - "datanode2:${WORKER2_TS_IP:-127.0.0.1}"
+      Bat hostname thay vi IP khi NameNode giao tiep voi DataNode.
+
+      Tren Docker Desktop, cac worker khac nhau co the bi NAT
+      thanh cung mot IP noi bo. Dieu nay khien NameNode xem
+      nhieu DataNode la cung mot node.
+
+      Su dung hostname nhu datanode1 va datanode2 se tranh
+      duoc van de trung IP.
+
+      Yeu cau:
+      - NameNode phai resolve duoc datanode1 va datanode2
+      - Them extra_hosts trong docker-compose
     </description>
   </property>
 
@@ -84,11 +86,11 @@
     <name>dfs.datanode.use.datanode.hostname</name>
     <value>true</value>
     <description>
-      SỬA: bật true — DataNode tự báo bằng HOSTNAME (datanode1/datanode2,
-      set qua dfs.datanode.hostname ghi vào hdfs-site.xml override bằng
-      entrypoint.sh/HADOOP_CONF_DIR) thay vì IP socket (luôn bị NAT thành
-      192.168.65.1 trên Docker Desktop).
-      Phải đi cùng với dfs.namenode.use.datanode.hostname=true ở trên.
+      DataNode dang ky voi NameNode bang hostname
+      thay vi IP socket.
+
+      Can dung cung voi:
+      dfs.namenode.use.datanode.hostname=true
     </description>
   </property>
 
@@ -96,49 +98,64 @@
     <name>dfs.client.use.datanode.hostname</name>
     <value>true</value>
     <description>
-      SỬA: bật true — HDFS client (Jupyter/Spark) cũng dùng hostname
-      "datanode1"/"datanode2" để đọc/ghi block trực tiếp.
-      YÊU CẦU: container jupyter phải resolve được 2 hostname này
-      (đã có extra_hosts datanode1/datanode2 trong docker-compose.master.yml
-      cho service jupyter — chỉ cần đảm bảo WORKER1_TS_IP/WORKER2_TS_IP
-      trong .env của master đã điền đúng).
+      HDFS client nhu Spark va Jupyter se su dung
+      hostname de doc va ghi block truc tiep.
+
+      Dam bao container client resolve duoc
+      datanode1 va datanode2.
     </description>
   </property>
 
   <!--
-    SỬA: dfs.datanode.address / dfs.datanode.http.address / dfs.datanode.ipc.address
-    / dfs.datanode.hostname KHÔNG đặt cố định ở đây (giá trị phụ thuộc
-    DATANODE_HOST/WORKER_ID, mỗi máy worker khác nhau). NameNode cũng đọc
-    file hdfs-site.xml này — nếu để placeholder cố định ở đây NameNode có
-    thể parse nhầm và crash.
-    Thay vào đó, entrypoint.sh copy toàn bộ config sang /hadoop/conf-override,
-    chèn/ghi đè 4 property trên với giá trị đúng cho từng container, rồi set
-    HADOOP_CONF_DIR=/hadoop/conf-override (chỉ DataNode process dùng, NameNode
-    process không bị ảnh hưởng vì nó dùng HADOOP_CONF_DIR mặc định).
+    Cac property sau khong duoc dat co dinh:
+
+    - dfs.datanode.address
+    - dfs.datanode.http.address
+    - dfs.datanode.ipc.address
+    - dfs.datanode.hostname
+
+    Moi DataNode co gia tri khac nhau nen duoc sinh
+    dong trong entrypoint.sh.
+
+    entrypoint.sh se:
+    1. Copy config sang /hadoop/conf-override
+    2. Chen cac gia tri phu hop cho tung container
+    3. Dat HADOOP_CONF_DIR=/hadoop/conf-override
+
+    Cach nay tranh viec NameNode doc nham config
+    danh rieng cho DataNode.
   -->
 
   <property>
     <name>dfs.datanode.socket.write.timeout</name>
     <value>120000</value>
-    <description>Timeout (ms) socket ghi của DataNode. Tăng cho Tailscale WAN latency.</description>
+    <description>
+      Tang timeout ghi socket cho moi truong Tailscale.
+    </description>
   </property>
 
   <property>
     <name>dfs.client.socket-timeout</name>
     <value>120000</value>
-    <description>Timeout (ms) socket client HDFS. Tăng cho Tailscale.</description>
+    <description>
+      Tang timeout cho HDFS client tren Tailscale.
+    </description>
   </property>
 
   <property>
     <name>dfs.namenode.heartbeat.recheck-interval</name>
     <value>30000</value>
-    <description>30s recheck — tránh DataNode bị đánh dấu dead do Tailscale lag.</description>
+    <description>
+      Kiem tra heartbeat moi 30 giay de tranh false alarm.
+    </description>
   </property>
 
   <property>
     <name>dfs.namenode.stale.datanode.interval</name>
     <value>60000</value>
-    <description>60s — DataNode không heartbeat trong 60s mới bị đánh dấu stale.</description>
+    <description>
+      DataNode khong heartbeat trong 60 giay moi bi danh dau stale.
+    </description>
   </property>
 
 </configuration>

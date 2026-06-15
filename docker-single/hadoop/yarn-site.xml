@@ -47,7 +47,7 @@
     <value>0.0.0.0:8088</value>
   </property>
 
-  <!-- Gioi han RAM cap phat xuong con 512MB de danh tai nguyen cho cac dich vu khac nhu Spark, Kafka hay Jupyter -->
+  <!-- Gioi han RAM cap phat xuong con 512MB de danh tai nguyen cho cac dich vu khac nhu Spark, hay Jupyter -->
   <property>
     <name>yarn.nodemanager.resource.memory-mb</name>
     <value>512</value>

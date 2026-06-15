@@ -36,9 +36,9 @@ def add_default_args(args: list[str]) -> list[str]:
         "--sample-fraction": "1.0",
         "--k-min": "2",
         "--k-max": "8",
-        "--driver-memory": "8g",
-        "--shuffle-partitions": "64",
-        "--default-parallelism": "64",
+        "--driver-memory": "5g",
+        "--shuffle-partitions": "32",
+        "--default-parallelism": "16",
     }
     for option, value in defaults.items():
         if not has_option(final_args, option):

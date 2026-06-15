@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <!--
-  yarn-site.xml — YARN ResourceManager + NodeManager configuration
-  Multi-machine:
-    - ResourceManager chạy trên master (hostname "namenode")
-    - NodeManager chạy trên worker machines
-    - Worker resolve "namenode" → MASTER_TS_IP qua extra_hosts
+  yarn-site.xml - File cấu hình cho YARN ResourceManager và NodeManager
+  Mô hình nhiều máy:
+    - ResourceManager chạy trên máy master (hostname "namenode")
+    - NodeManager chạy trên các máy worker
+    - Các worker phân giải "namenode" thành MASTER_TS_IP qua extra_hosts
 -->
 <configuration>
 
@@ -40,9 +40,8 @@
   </property>
 
   <property>
-    <!-- Port 8031: Resource Tracker — NodeManager đăng ký resource với RM.
-         Lưu ý: 8031 ≠ Admin. Port Admin thực sự là 8033 (ở trên).
-         Cần expose 8031 trong docker-compose.master.yml cho cross-machine NM. -->
+    <!-- Cổng 8031: Resource Tracker - NodeManager đăng ký tài nguyên với ResourceManager.
+         Cần mở cổng 8031 để các máy worker bên ngoài có thể kết nối. -->
     <name>yarn.resourcemanager.resource-tracker.address</name>
     <value>namenode:8031</value>
   </property>
@@ -56,8 +55,8 @@
     <name>yarn.nodemanager.resource.memory-mb</name>
     <value>3072</value>
     <description>
-      RAM cho YARN NodeManager. Mặc định 3072MB (phù hợp máy 8GB).
-      Tăng lên 6144 nếu máy worker có 16GB RAM.
+      Bộ nhớ RAM cho YARN NodeManager. Mặc định là 3072MB (phù hợp máy 8GB).
+      Tăng lên 6144MB nếu máy worker có 16GB RAM.
     </description>
   </property>
 
@@ -99,25 +98,25 @@
   <property>
     <name>yarn.resourcemanager.nm.liveness-monitor.interval-ms</name>
     <value>3000</value>
-    <description>RM check NodeManager liveness mỗi 3s (mặc định 1s).</description>
+    <description>ResourceManager kiểm tra trạng thái hoạt động (liveness) của NodeManager mỗi 3 giây (mặc định là 1 giây).</description>
   </property>
 
   <property>
     <name>yarn.nm.liveness-monitor.expiry-interval-ms</name>
     <value>120000</value>
-    <description>120s timeout trước khi RM coi NM là dead. Tăng cho Tailscale latency.</description>
+    <description>Thời gian chờ 120 giây trước khi ResourceManager coi NodeManager là đã mất kết nối.</description>
   </property>
 
   <property>
     <name>yarn.resourcemanager.connect.max-wait.ms</name>
     <value>60000</value>
-    <description>NM đợi RM sẵn sàng tối đa 60s khi start.</description>
+    <description>NodeManager chờ ResourceManager sẵn sàng tối đa 60 giây khi khởi động.</description>
   </property>
 
   <property>
     <name>yarn.resourcemanager.connect.retry-interval.ms</name>
     <value>5000</value>
-    <description>Retry mỗi 5s khi NM chờ RM.</description>
+    <description>Thử kết nối lại mỗi 5 giây trong khi NodeManager chờ ResourceManager.</description>
   </property>
 
 </configuration>

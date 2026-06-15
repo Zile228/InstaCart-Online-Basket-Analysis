@@ -1,49 +1,44 @@
 # ============================================================
 #  docker-compose.master.yml
-#  Chạy trên MACHINE 1 (Master)
-#  Stack: Hadoop 3.4.3 · Spark 4.1.1 · Kafka 4.1.2 · Jupyter
+#  Chạy trên máy Master (Machine 1)
+#  Hệ thống: Hadoop 3.4.3 - Spark 4.1.1 - Jupyter
 #
-#  Khởi động:
+#  Cách khởi động:
 #    ./script/start-master.sh
 #    ./script/start-master.sh --with-virtual-worker
 #
 #  Yêu cầu:
-#    - File .env với MASTER_TS_IP đã điền đúng
+#    - File .env đã khai báo đúng MASTER_TS_IP
 #    - Tailscale đang chạy trên máy này
 # ============================================================
 
 networks:
   bigdata-net:
-    driver: bridge   # Network nội bộ trên máy master
+    driver: bridge   # Mạng (network) nội bộ trên máy Master
 
-# ─────────────────────────────────────────────────────────────
-#  HADOOP NAMENODE + YARN ResourceManager
-#  Port 9000 và 8032 PHẢI expose ra host để worker kết nối qua Tailscale
-# ─────────────────────────────────────────────────────────────
+# --- HADOOP NAMENODE và YARN ResourceManager ---
+# Các cổng 9000 và 8032 cần expose ra ngoài máy thật (host) để Worker kết nối qua Tailscale
 services:
   namenode:
     build:
       context: ./hadoop
       dockerfile: Dockerfile
       args:
-        # Inject DFS_REPLICATION vào hdfs-site.xml lúc build (Hadoop không đọc env var trong XML)
-        # Đổi giá trị trong .env rồi rebuild: docker compose build --no-cache namenode
+        # Truyền tham số DFS_REPLICATION vào file hdfs-site.xml lúc build
         DFS_REPLICATION: "${DFS_REPLICATION:-1}"
     image: instacart-hadoop:3.4.3
     container_name: namenode
     hostname: namenode
     ports:
-      - "9870:9870"   # NameNode Web UI  → http://MASTER_TS_IP:9870
-      - "9000:9000"   # HDFS RPC         ← Worker DataNode kết nối vào đây
-      - "8088:8088"   # YARN RM Web UI   → http://MASTER_TS_IP:8088
-      - "8032:8032"   # YARN RM Scheduler← Worker NodeManager đăng ký vào đây
-      - "8030:8030"   # YARN RM Resource Scheduler ← Cần cho NM cross-machine
-      - "8031:8031"   # YARN RM Resource Tracker  ← NodeManager đăng ký vào đây (không phải Admin — 8033 mới là Admin)
+      - "9870:9870"   # NameNode Web UI - Địa chỉ: http://MASTER_TS_IP:9870
+      - "9000:9000"   # HDFS RPC - Nơi các Worker DataNode kết nối vào
+      - "8088:8088"   # YARN ResourceManager Web UI - Địa chỉ: http://MASTER_TS_IP:8088
+      - "8032:8032"   # YARN ResourceManager Scheduler - Nơi Worker NodeManager kết nối đăng ký
+      - "8030:8030"   # YARN RM Resource Scheduler - Cần thiết cho NodeManager khác máy
+      - "8031:8031"   # YARN RM Resource Tracker - Nơi NodeManager đăng ký tài nguyên
     networks:
       - bigdata-net
-    # SỬA: cần thiết vì hdfs-site.xml giờ dùng dfs.namenode.use.datanode.hostname=true
-    # NameNode phải resolve "datanode1"/"datanode2" để định danh + liên lạc ngược
-    # về 2 datanode khác máy (tránh trùng IP do Docker Desktop NAT).
+    # Phân giải chính xác tên máy datanode1 và datanode2 về IP Tailscale tương ứng để tránh trùng lặp IP khi NAT
     extra_hosts:
       - "datanode1:${WORKER1_TS_IP:-127.0.0.1}"
       - "datanode2:${WORKER2_TS_IP:-127.0.0.1}"
@@ -61,10 +56,8 @@ services:
       timeout: 10s
       retries: 5
 
-# ─────────────────────────────────────────────────────────────
-#  SPARK MASTER
-#  Port 7077 PHẢI expose ra host để worker Spark kết nối qua Tailscale
-# ─────────────────────────────────────────────────────────────
+# --- SPARK MASTER ---
+# Cổng 7077 cần expose ra ngoài máy thật để Worker Spark kết nối qua Tailscale
   spark-master:
     build:
       context: ./spark
@@ -73,9 +66,9 @@ services:
     container_name: spark-master
     hostname: spark-master
     ports:
-      - "8080:8080"   # Spark Web UI   → http://MASTER_TS_IP:8080
-      - "7077:7077"   # Spark RPC      ← Worker Spark kết nối vào đây
-      - "4040:4040"   # App UI (khi job đang chạy)
+      - "8080:8080"   # Spark Web UI - Địa chỉ: http://MASTER_TS_IP:8080
+      - "7077:7077"   # Spark RPC - Nơi Worker Spark kết nối vào
+      - "4040:4040"   # Giao diện ứng dụng (chỉ hiển thị khi có Job đang chạy)
     networks:
       - bigdata-net
     environment:
@@ -88,50 +81,8 @@ services:
     mem_limit: 1g
     memswap_limit: 1g
 
-# ─────────────────────────────────────────────────────────────
-#  KAFKA 4.1.2 — KRaft mode (KHÔNG có Zookeeper)
-#
-#  QUAN TRỌNG — KAFKA_ADVERTISED_LISTENERS:
-#    PLAINTEXT://kafka:29092        → dùng nội bộ Docker (Jupyter → Kafka)
-#    PLAINTEXT_HOST://MASTER_TS_IP:9092 → dùng từ worker machine qua Tailscale
-#
-#  Worker/external consumer KẾT NỐI qua MASTER_TS_IP:9092
-#  Jupyter/Spark bên trong Docker KẾT NỐI qua kafka:29092
-# ─────────────────────────────────────────────────────────────
-  kafka:
-    image: apache/kafka:4.1.2
-    container_name: kafka
-    hostname: kafka
-    ports:
-      - "9092:9092"   # External (Tailscale) ← Worker consumer kết nối
-    networks:
-      - bigdata-net
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      # SỬA: dùng ${MASTER_TS_IP} cho external listener
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://${MASTER_TS_IP}:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      CLUSTER_ID: "${KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}"
-    mem_limit: 768m
-    memswap_limit: 768m
-
-# ─────────────────────────────────────────────────────────────
-#  JUPYTER NOTEBOOK
-#
-#  extra_hosts: cần thiết để Jupyter (driver) resolve hostname
-#  của các DataNode trên worker machines khi đọc/ghi HDFS trực tiếp.
-#  Điều kiện: Worker phải expose port 9866 và WORKER1_TS_IP được điền.
-#  Nếu WORKER1_TS_IP để trống → datanode1 trỏ về 127.0.0.1 (fallback)
-# ─────────────────────────────────────────────────────────────
+# --- JUPYTER NOTEBOOK ---
+# Thiết lập extra_hosts để Jupyter phân giải tên máy (hostname) của các DataNode trên máy Worker
   jupyter:
     build:
       context: ./jupyter
@@ -140,18 +91,18 @@ services:
     container_name: jupyter
     hostname: jupyter
     ports:
-      - "8888:8888"   # Jupyter UI → http://MASTER_TS_IP:8888
-      - "4041:4041"   # spark.driver.port — executor remote connect về đây
-      - "4042:4042"   # spark.blockManager.port
+      - "8888:8888"   # Jupyter UI - Địa chỉ: http://MASTER_TS_IP:8888
+      - "4041:4041"   # Cổng spark.driver.port để Executor kết nối từ xa về Driver
+      - "4042:4042"   # Cổng spark.blockManager.port
       - "4043:4040"
     networks:
       - bigdata-net
-    # SỬA: Cho phép Jupyter resolve DataNode hostname trên worker machines
+    # Phân giải tên máy DataNode của các máy Worker
     extra_hosts:
       - "datanode1:${WORKER1_TS_IP:-127.0.0.1}"
       - "datanode2:${WORKER2_TS_IP:-127.0.0.1}"
     environment:
-      # SỬA: Spark Master URL dùng Tailscale IP để Jupyter submit job đúng
+      # Địa chỉ kết nối Spark Master qua IP Tailscale
       SPARK_MASTER: spark://${MASTER_TS_IP}:7077
       MASTER_TS_IP: ${MASTER_TS_IP} 
       HDFS_NAMENODE: hdfs://namenode:9000
@@ -162,16 +113,11 @@ services:
     depends_on:
       - spark-master
       - namenode
-      - kafka
     mem_limit: ${JUPYTER_MEM:-8g}
     memswap_limit: ${JUPYTER_MEM:-8g}
 
-# ─────────────────────────────────────────────────────────────
-#  VIRTUAL DATANODE — Profile: virtual-worker
-#  Dùng khi không có bạn nhóm join worker machine
-#  Bật: ./scripts/start-master.sh --with-virtual-worker
-#  Tài nguyên giới hạn thấp để không OOM master machine
-# ─────────────────────────────────────────────────────────────
+# --- VIRTUAL DATANODE (Mô phỏng Worker nội bộ) - Profile: virtual-worker ---
+# Sử dụng khi chạy thử nghiệm độc lập trên một máy Master
   virtual-datanode:
     profiles: ["virtual-worker"]
     image: instacart-hadoop:3.4.3
@@ -189,22 +135,20 @@ services:
     depends_on:
       - namenode
 
-# ─────────────────────────────────────────────────────────────
-#  VIRTUAL SPARK WORKER — Profile: virtual-worker
-#  Virtual worker dùng hostname Docker trực tiếp (cùng network bridge)
-# ─────────────────────────────────────────────────────────────
+# --- VIRTUAL SPARK WORKER - Profile: virtual-worker ---
+# Chạy trực tiếp qua mạng nội bộ Docker Bridge
   virtual-spark-worker:
     profiles: ["virtual-worker"]
     image: instacart-spark:4.1.1
     container_name: virtual-spark-worker
     hostname: virtual-spark-worker
     ports:
-      - "8083:8081"   # Spark Worker Web UI (tránh xung đột 8081/8082)
+      - "8083:8081"   # Spark Worker Web UI (Dùng cổng 8083 để tránh trùng lặp)
     networks:
       - bigdata-net
     environment:
       SPARK_MODE: worker
-      # Virtual worker cùng Docker network → dùng hostname spark-master trực tiếp
+      # Sử dụng hostname spark-master trực tiếp do nằm cùng dải mạng nội bộ Docker
       SPARK_MASTER_URL: spark://spark-master:7077
       SPARK_WORKER_MEMORY: ${VIRTUAL_WORKER_MEM:-512m}
       SPARK_WORKER_CORES: "${VIRTUAL_WORKER_CORES:-1}"
@@ -216,10 +160,8 @@ services:
     depends_on:
       - spark-master
 
-# ─────────────────────────────────────────────────────────────
-#  VOLUMES — persistent HDFS storage
-# ─────────────────────────────────────────────────────────────
+# --- Cấu hình vùng lưu trữ dữ liệu bền vững (Volumes) ---
 volumes:
   hadoop_namenode:
   hadoop_tmp:
-  hadoop_virtual_datanode:   # Dùng khi virtual-worker bật
+  hadoop_virtual_datanode:   # Sử dụng khi kích hoạt chế độ virtual-worker

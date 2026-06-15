@@ -1,11 +1,10 @@
 # File docker-compose.yml phuc vu moi truong Single-node gon nhe
 # Spark se chay o che do local[*] ngay trong Jupyter nen khong can thiet lap rieng spark-master/worker
 #
-# Uoc luong tong dung luong RAM can thiet: khoang 4 GB
+# Uoc luong tong dung luong RAM can thiet: khoang 9.8 GB
 # - namenode: 900 MB
 # - datanode: 700 MB
-# - kafka: 400 MB
-# - jupyter: 2 GB (bao gom ca vung thuc thi Spark)
+# - jupyter: 8 GB (bao gom ca vung thuc thi Spark)
 
 networks:
   bigdata-net:
@@ -76,40 +75,8 @@ services:
       namenode:
         condition: service_healthy
 
-  # Thiet lap cho he thong tin nhan message queue Kafka
-  kafka:
-    image: apache/kafka:4.1.2
-    container_name: kafka
-    hostname: kafka
-    ports:
-      - "9092:9092"   # Cong ket noi tu ngoai container -> localhost:9092
-    networks:
-      - bigdata-net
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      CLUSTER_ID: "${KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}"
-      KAFKA_HEAP_OPTS: "-Xmx256m -Xms128m"
-    cpus: "0.5"
-    mem_limit: 400m
-    memswap_limit: 400m
-    restart: on-failure
-    depends_on:
-      namenode:
-        condition: service_healthy
-
   # Thiet lap cho Jupyter va Spark chay o che do local[*]
-  # He thong se chay thuc thi Spark truc tiep ben trong container nay de giao tiep truc tiep voi HDFS va Kafka
+  # He thong se chay thuc thi Spark truc tiep ben trong container nay de giao tiep truc tiep voi HDFS
   # Bạn co the theo doi giao dien quan ly Spark UI tai dia chi http://localhost:4040 khi co job dang chay
   jupyter:
     build:
@@ -131,15 +98,13 @@ services:
       - ../src:/home/nhom05/work
       - ../data:/home/nhom05/data
       - ./spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
-    cpus: "2.0"
-    mem_limit: 6g
+    cpus: "4.0"
+    mem_limit: 8g
     memswap_limit: 8g
     restart: on-failure
     depends_on:
       namenode:
         condition: service_healthy
-      kafka:
-        condition: service_started
 
 volumes:
   hadoop_namenode:
