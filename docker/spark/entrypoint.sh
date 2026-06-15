@@ -1,17 +1,8 @@
 #!/bin/bash
 # ============================================================
-#  Spark Entrypoint — detects SPARK_MODE and starts service
-#  SPARK_MODE=master → start Spark Master
-#  SPARK_MODE=worker → start Spark Worker (kết nối đến master)
-#
-#  Multi-machine update:
-#    - Worker có thể chạy trên máy khác qua Tailscale
-#    - SPARK_MASTER_URL chứa Tailscale IP (truyền qua env var)
-#    - wait_for_service dùng MASTER_HOST đã resolve qua extra_hosts
-#      (không hard-code "spark-master" hostname cho worker)
-#
-#  GIỮ NGUYÊN từ config cũ (đã debug kỹ):
-#    - nc -z thay /dev/tcp (reliable hơn trên một số Docker kernel)
+#  Spark Entrypoint - Nhận diện SPARK_MODE để khởi chạy dịch vụ
+#  SPARK_MODE=master -> Khởi động Spark Master
+#  SPARK_MODE=worker -> Khởi động Spark Worker và kết nối đến master
 # ============================================================
 
 set -e
@@ -19,11 +10,11 @@ set -e
 SPARK_MODE="${SPARK_MODE:-master}"
 
 echo "======================================================"
-echo "  Spark ${SPARK_VERSION:-4.1.1} — starting as: ${SPARK_MODE}"
+echo "  Spark ${SPARK_VERSION:-4.1.1} - starting as: ${SPARK_MODE}"
 echo "======================================================"
 
-# ── Wait function (dùng nc -z, không dùng /dev/tcp) ──────────
-# nc -z reliable hơn /dev/tcp trên các Docker image minimal
+# --- Hàm chờ dịch vụ sẵn sàng ---
+# Sử dụng 'nc -z' vì hoạt động ổn định hơn cơ chế '/dev/tcp' trên môi trường Docker
 wait_for_service() {
     local HOST=$1
     local PORT=$2
@@ -44,7 +35,7 @@ wait_for_service() {
     echo "  ${HOST}:${PORT} is up (or timeout — proceeding anyway)!"
 }
 
-# ── Spark Master ─────────────────────────────────────────────
+# --- Khởi động Spark Master ---
 if [ "${SPARK_MODE}" = "master" ]; then
 
     echo "Starting Spark Master on ${SPARK_MASTER_HOST:-spark-master}:${SPARK_MASTER_PORT:-7077}"
@@ -53,13 +44,13 @@ if [ "${SPARK_MODE}" = "master" ]; then
         --port "${SPARK_MASTER_PORT:-7077}" \
         --webui-port "${SPARK_MASTER_WEBUI_PORT:-8080}"
 
-# ── Spark Worker ─────────────────────────────────────────────
+# --- Khởi động Spark Worker ---
 elif [ "${SPARK_MODE}" = "worker" ]; then
 
     MASTER_URL="${SPARK_MASTER_URL:-spark://spark-master:7077}"
 
-    # Trích xuất host từ MASTER_URL để wait_for_service
-    # MASTER_URL format: spark://HOST:PORT
+    # Trích xuất thông tin host và port từ MASTER_URL để kiểm tra kết nối
+    # Định dạng của MASTER_URL: spark://HOST:PORT
     MASTER_HOST=$(echo "$MASTER_URL" | sed 's|spark://||' | cut -d: -f1)
     MASTER_PORT=$(echo "$MASTER_URL" | sed 's|spark://||' | cut -d: -f2)
 
@@ -68,14 +59,14 @@ elif [ "${SPARK_MODE}" = "worker" ]; then
 
     wait_for_service "${MASTER_HOST}" "${MASTER_PORT}" 40 5
 
-    echo "Starting Spark Worker → ${MASTER_URL}"
+    echo "Starting Spark Worker -> ${MASTER_URL}"
     exec ${SPARK_HOME}/bin/spark-class org.apache.spark.deploy.worker.Worker \
         --webui-port "${SPARK_WORKER_WEBUI_PORT:-8081}" \
         --memory "${SPARK_WORKER_MEMORY:-2G}" \
         --cores "${SPARK_WORKER_CORES:-2}" \
         "${MASTER_URL}"
 
-# ── Passthrough (spark-submit, spark-shell, v.v.) ─────────────
+# --- Trường hợp chạy các lệnh khác (spark-submit, spark-shell, v.v.) ---
 else
     exec "$@"
 fi

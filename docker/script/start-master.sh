@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # ============================================================
-#  start-master.sh — Khởi động Master node
+#  start-master.sh - Khởi động Master node
 #
-#  Usage:
-#    ./scripts/start-master.sh                    # Không có virtual worker
-#    ./scripts/start-master.sh --with-virtual-worker  # Có virtual worker
+#  Cách dùng:
+#    ./scripts/start-master.sh                    # Không kèm virtual worker
+#    ./scripts/start-master.sh --with-virtual-worker  # Kèm virtual worker
 #
 #  Yêu cầu:
-#    - File .env đã điền MASTER_TS_IP
+#    - File .env đã khai báo MASTER_TS_IP
 #    - Docker Desktop đang chạy
 #    - Tailscale đang kết nối
 #
-#  Hoạt động trên: macOS, WSL2 (Windows), Linux
+#  Hỗ trợ trên: macOS, WSL2 (Windows), Linux
 # ============================================================
 
 set -e
@@ -19,7 +19,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="$(dirname "$SCRIPT_DIR")"
 
-# ── Kiểm tra .env tồn tại ─────────────────────────────────────
+# --- Kiểm tra sự tồn tại của file .env ---
 if [ ! -f "$DOCKER_DIR/.env" ]; then
     echo ""
     echo "  ERROR: Thiếu file .env"
@@ -30,13 +30,13 @@ if [ ! -f "$DOCKER_DIR/.env" ]; then
     exit 1
 fi
 
-# ── Load biến môi trường từ .env ──────────────────────────────
+# --- Tải các biến môi trường từ file .env ---
 set -a
 # shellcheck disable=SC1090
 source "$DOCKER_DIR/.env"
 set +a
 
-# ── Kiểm tra MASTER_TS_IP đã điền chưa ───────────────────────
+# --- Kiểm tra cấu hình MASTER_TS_IP ---
 if [ -z "${MASTER_TS_IP:-}" ] || [ "$MASTER_TS_IP" = "100.x.x.x" ]; then
     echo ""
     echo "  ERROR: Chưa cấu hình MASTER_TS_IP trong .env"
@@ -46,12 +46,12 @@ if [ -z "${MASTER_TS_IP:-}" ] || [ "$MASTER_TS_IP" = "100.x.x.x" ]; then
     exit 1
 fi
 
-# ── Kiểm tra Tailscale đang chạy ─────────────────────────────
+# --- Kiểm tra trạng thái hoạt động của Tailscale ---
 if ! tailscale status > /dev/null 2>&1; then
     echo ""
     echo "  WARNING: Không tìm thấy lệnh 'tailscale' hoặc Tailscale chưa chạy."
     echo "  Worker machines sẽ không kết nối được."
-    echo "  Khuyến nghị: cài và start Tailscale trước."
+    echo "  Khuyến nghị: cài và khởi động Tailscale trước."
     echo ""
 fi
 
@@ -61,20 +61,20 @@ echo "  Khởi động Master Cluster"
 echo "  Tailscale IP: $MASTER_TS_IP"
 echo "============================================================"
 
-# ── Build images nếu chưa có ─────────────────────────────────
+# --- Tạo (Build) các Docker image nếu chưa có ---
 echo ""
 echo "  [1/3] Build Docker images (bỏ qua nếu đã có)..."
 docker compose -f "$DOCKER_DIR/docker-compose.master.yml" \
     --env-file "$DOCKER_DIR/.env" \
     build --quiet
 
-# ── Xác định có bật virtual worker không ─────────────────────
+# --- Kiểm tra tùy chọn khởi chạy virtual worker ---
 USE_VIRTUAL_WORKER=false
 if [ "${1:-}" = "--with-virtual-worker" ] || [ "${ENABLE_VIRTUAL_WORKER:-false}" = "true" ]; then
     USE_VIRTUAL_WORKER=true
 fi
 
-# ── Khởi động services ───────────────────────────────────────
+# --- Khởi động các dịch vụ ---
 echo ""
 if [ "$USE_VIRTUAL_WORKER" = "true" ]; then
     echo "  [2/3] Khởi động master + virtual worker..."
@@ -89,7 +89,7 @@ else
         up -d
 fi
 
-# ── Thông báo kết quả ─────────────────────────────────────────
+# --- Hiển thị thông báo kết quả ---
 echo ""
 echo "  [3/3] Cluster đang khởi động..."
 echo ""

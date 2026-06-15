@@ -1,100 +1,62 @@
 # ============================================================
 #  docker-compose.worker.yml
-#  Chạy trên MACHINE 2 (Worker-1) hoặc MACHINE 3 (Worker-2)
-#  Stack: Hadoop DataNode + YARN NodeManager + Spark Worker
+#  Chạy trên máy Worker 1 (Machine 2) hoặc máy Worker 2 (Machine 3)
+#  Hệ thống: Hadoop DataNode - YARN NodeManager - Spark Worker
 #
-#  Khởi động:
+#  Cách khởi động:
 #    ./script/start-worker.sh
 #
-#  Yêu cầu trong .env:
-#    MASTER_TS_IP   — Tailscale IP của máy master
-#    WORKER_ID      — 1 cho worker-1, 2 cho worker-2
-#    WORKER_TS_IP   — Tailscale IP của CHÍNH MÁY WORKER này (dùng: tailscale ip -4)
-#    WORKER_MEM     — RAM cấp cho mỗi container (vd: 4G)
-#    WORKER_CORES   — Số core cho Spark Worker (vd: 2)
-#    YARN_MEM_MB    — RAM cho YARN NodeManager tính bằng MB (vd: 3072)
-#
-#  Ghi chú quan trọng:
-#    extra_hosts:
-#      "namenode"    → MASTER_TS_IP  : DataNode gọi NameNode bằng hostname "namenode"
-#      "spark-master"→ MASTER_TS_IP  : Spark Worker gọi Master bằng hostname "spark-master"
-#    Nhờ extra_hosts, các hostname trong config XML vẫn dùng được
-#    mà không cần thay đổi file Hadoop/Spark.
+#  Yêu cầu cấu hình trong file .env:
+#    MASTER_TS_IP   - IP Tailscale của máy Master
+#    WORKER_ID      - Điền 1 cho worker-1, điền 2 cho worker-2
+#    WORKER_TS_IP   - IP Tailscale của chính máy Worker hiện tại
+#    WORKER_MEM     - Dung lượng RAM cấp cho container (ví dụ: 4G)
+#    WORKER_CORES   - Số nhân CPU cấp cho Spark Worker (ví dụ: 2)
+#    YARN_MEM_MB    - Dung lượng RAM cấp cho YARN NodeManager bằng MB (ví dụ: 3072)
 # ============================================================
 
 networks:
   bigdata-net:
-    driver: bridge   # Network cục bộ trên máy worker (không kết nối với master bridge)
+    driver: bridge   # Mạng (network) nội bộ trên máy Worker
 
-# ─────────────────────────────────────────────────────────────
-#  HADOOP DATANODE + YARN NodeManager
-#
-#  extra_hosts "namenode → MASTER_TS_IP":
-#    core-site.xml và hdfs-site.xml dùng hostname "namenode"
-#    DataNode cần resolve "namenode" → Tailscale IP của master
-#    Không có dòng này DataNode không đăng ký được với NameNode
-#
-#  SERVICE_PRECONDITION: chờ NameNode Web UI (9870) trên master
-#    qua Tailscale trước khi start để tránh crash loop
-# ─────────────────────────────────────────────────────────────
+# --- HADOOP DATANODE và YARN NodeManager ---
+# Cần cấu hình extra_hosts "namenode" trỏ về MASTER_TS_IP để DataNode kết nối và đăng ký thành công với NameNode.
 services:
   datanode:
     build:
       context: ./hadoop
       dockerfile: Dockerfile
       args:
-        # Phải match với giá trị build trên master để HDFS không bị lệch replication
+        # Trùng khớp với giá trị trên máy Master để đồng nhất thông số replication
         DFS_REPLICATION: "${DFS_REPLICATION:-1}"
     image: instacart-hadoop:3.4.3
     container_name: datanode-${WORKER_ID:-1}
-    # QUAN TRỌNG: hostname phải là "datanodeX" để NameNode nhận ra
-    # Đồng thời DataNode sẽ tự báo IP thay vì hostname nhờ dfs.datanode.hostname.check=false
+    # Định danh tên máy dạng datanode1 hoặc datanode2 để NameNode phân biệt
     hostname: datanode${WORKER_ID:-1}
     ports:
-      # SỬA: port lệch +10 mỗi WORKER_ID (xem hadoop/entrypoint.sh) để NameNode
-      # phân biệt được 2 worker dù IP đều bị Docker Desktop NAT thành cùng
-      # 192.168.65.1. WORKER_ID=1 → 9864/9866/9867 (mặc định, không đổi);
-      # WORKER_ID=2 → 9874/9876/9877.
-      # Compose không hỗ trợ arithmetic trực tiếp, nên set PORT_OFFSET trong
-      # .env: WORKER_ID=1 → để PORT_OFFSET trống hoặc =0; WORKER_ID=2 →
-      # PORT_OFFSET=10.
-      - "${DN_HTTP_PORT:-9864}:${DN_HTTP_PORT:-9864}"   # DataNode Web UI  → http://WORKER_TS_IP:986x
-      - "${DN_XFER_PORT:-9866}:${DN_XFER_PORT:-9866}"   # DataNode transfer port (HDFS read/write từ client)
-      - "${DN_IPC_PORT:-9867}:${DN_IPC_PORT:-9867}"     # DataNode IPC port
-      - "8042:8042"   # NodeManager Web UI → http://WORKER_TS_IP:8042
+      - "${DN_HTTP_PORT:-9864}:${DN_HTTP_PORT:-9864}"   # DataNode Web UI - Địa chỉ: http://WORKER_TS_IP:986x
+      - "${DN_XFER_PORT:-9866}:${DN_XFER_PORT:-9866}"   # Cổng truyền dữ liệu DataNode (cho client đọc/ghi HDFS)
+      - "${DN_IPC_PORT:-9867}:${DN_IPC_PORT:-9867}"     # Cổng DataNode IPC
+      - "8042:8042"   # NodeManager Web UI - Địa chỉ: http://WORKER_TS_IP:8042
     extra_hosts:
-      # QUAN TRỌNG: resolve "namenode" → Tailscale IP của master machine
-      # DataNode + NodeManager gọi namenode:9000, namenode:8032, namenode:8088
+      # Phân giải tên miền "namenode" về IP Tailscale của máy Master
       - "namenode:${MASTER_TS_IP}"
     environment:
       HADOOP_ROLE: datanode
-      # Entrypoint chờ port này sẵn sàng trước khi start DataNode
-      # Dùng MASTER_TS_IP thay vì hostname "namenode" để wait_for_service
-      # hoạt động đúng ngay từ lúc container chưa resolve hostname
+      # Kiểm tra cổng hoạt động của NameNode trước khi khởi chạy
       SERVICE_PRECONDITION: "${MASTER_TS_IP}:9870"
-      # Ghi đè cấu hình memory YARN theo .env (tuỳ RAM máy worker)
-      # entrypoint.sh đọc biến này và override yarn-site.xml qua HADOOP_CONF_DIR
+      # Thiết lập dung lượng RAM cho NodeManager
       YARN_NODEMANAGER_RESOURCE_MEMORY_MB: "${YARN_MEM_MB:-3072}"
-      # FIX: Tailscale IP của máy worker này — DataNode sẽ advertise IP này cho NameNode.
-      # Thiếu biến này → DataNode tự detect và lấy nhầm IP public (vd: Fastly CDN).
-      # Lấy IP: tailscale ip -4 (trên máy worker), điền vào WORKER_TS_IP trong .env.
-      # worker-1 dùng WORKER1_TS_IP, worker-2 dùng WORKER2_TS_IP.
+      # IP Tailscale của chính máy Worker này để đăng ký chính xác với NameNode
       DATANODE_HOST: "${WORKER_TS_IP}"
-      # SỬA: WORKER_ID cần truyền vào container để entrypoint.sh tự tính
-      # DN_XFER_PORT/DN_HTTP_PORT/DN_IPC_PORT (offset +10 mỗi WORKER_ID),
-      # giúp NameNode phân biệt 2 worker dù IP bị NAT trùng (192.168.65.1).
+      # Mã định danh máy Worker để tính toán cổng kết nối tương ứng
       WORKER_ID: "${WORKER_ID:-1}"
-      # Có thể override port trực tiếp qua .env nếu cần (để khớp với phần
-      # "ports:" publish ở trên — phải set CÙNG GIÁ TRỊ ở .env nếu override).
       DN_XFER_PORT: "${DN_XFER_PORT:-}"
       DN_HTTP_PORT: "${DN_HTTP_PORT:-}"
       DN_IPC_PORT: "${DN_IPC_PORT:-}"
     volumes:
       - hadoop_datanode:/hadoop/dfs/data
-      # FIX: Đã XOÁ mount hdfs-site.xml từ host vào container.
-      # Mount đó ghi đè file trong image (đã được sed inject DFS_REPLICATION đúng lúc build),
-      # khiến DataNode luôn đọc <value>1</value> từ host thay vì giá trị build arg.
-      # Config được inject đúng lúc runtime qua HADOOP_CONF_DIR trong entrypoint.sh.
+      # Sao chép các tệp cấu hình cần thiết dạng chỉ đọc (Read-Only) vào container
       - ./hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
       - ./hadoop/yarn-site.xml:/opt/hadoop/etc/hadoop/yarn-site.xml:ro
       - ./hadoop/mapred-site.xml:/opt/hadoop/etc/hadoop/mapred-site.xml:ro
@@ -103,19 +65,8 @@ services:
     networks:
       - bigdata-net
 
-# ─────────────────────────────────────────────────────────────
-#  SPARK WORKER
-#
-#  extra_hosts "spark-master → MASTER_TS_IP":
-#    Khi Spark Worker đăng ký với Master, nó gửi hostname của mình
-#    và nhận lại địa chỉ driver. Driver liên lạc lại qua hostname
-#    "spark-master" — cần resolve được từ worker machine.
-#
-#  Port Web UI:
-#    WORKER_ID=1 → host port 8081
-#    WORKER_ID=2 → host port 8082
-#    (tránh xung đột nếu sau này nhiều worker trên cùng máy)
-# ─────────────────────────────────────────────────────────────
+# --- SPARK WORKER ---
+# Khởi chạy Spark Worker để liên lạc và nhận công việc phân bổ từ Spark Master
   spark-worker:
     build:
       context: ./spark
@@ -124,22 +75,18 @@ services:
     container_name: spark-worker-${WORKER_ID:-1}
     hostname: spark-worker-${WORKER_ID:-1}
     ports:
-      # SPARK_WORKER_PORT diều chỉnh trong .env: worker-1→8081, worker-2→8082
-      # Không dùng "808${WORKER_ID}:8081" vì Git Bash không expand variable trong YAML string
       - "${SPARK_WORKER_PORT:-8081}:8081"
-      - "4042:4042"    # ← THÊM: BlockManager port để driver fetch shuffle
-      - "4041:4041"    # ← THÊM: executor port (phòng trường hợp cần)
+      - "4042:4042"    # Cổng BlockManager để Driver lấy dữ liệu Shuffle
+      - "4041:4041"    # Cổng Executor dự phòng khi cần thiết
     extra_hosts:
-      # QUAN TRỌNG: resolve "spark-master" → Tailscale IP của master machine
-      # Spark Worker gọi spark-master:7077 để đăng ký
+      # Phân giải các hostname hệ thống về dải địa chỉ IP tương ứng
       - "spark-master:${MASTER_TS_IP}"
-      # Resolve "namenode" để Spark executor đọc/ghi HDFS trực tiếp
       - "namenode:${MASTER_TS_IP}"
-      - "datanode1:${WORKER1_TS_IP}"    # ← THÊM vào đây
-      - "datanode2:${WORKER2_TS_IP}"    # ← THÊM vào đây
+      - "datanode1:${WORKER1_TS_IP}"
+      - "datanode2:${WORKER2_TS_IP}"
     environment:
       SPARK_MODE: worker
-      # Kết nối Spark Master qua Tailscale IP (fallback hostname cũng được nhờ extra_hosts)
+      # Địa chỉ kết nối Spark Master qua IP Tailscale của máy Master
       SPARK_MASTER_URL: spark://${MASTER_TS_IP}:7077
       SPARK_WORKER_MEMORY: ${WORKER_MEM:-4G}
       SPARK_WORKER_CORES: "${WORKER_CORES:-2}"
@@ -153,8 +100,6 @@ services:
     networks:
       - bigdata-net
 
-# ─────────────────────────────────────────────────────────────
-#  VOLUMES — persistent HDFS DataNode storage
-# ─────────────────────────────────────────────────────────────
+# --- Cấu hình vùng lưu trữ dữ liệu bền vững (Volumes) ---
 volumes:
   hadoop_datanode:
